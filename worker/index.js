@@ -6,7 +6,7 @@ export default {
   if(path==='/api/classroom'){
    if(request.method!=='POST')return json({error:'請從寫作教室的介面操作。'},405);
    if(request.headers.get('origin')&&request.headers.get('origin')!==new URL(request.url).origin)return json({error:'來源不符。'},403);
-   if(!env.DB||!env.CLASS_CODE||!env.TEACHER_PIN)return json({error:'課堂尚未開放，請老師完成資料庫與課堂密碼設定。'},503);
+   if(!env.DB||!env.TEACHER_PIN)return json({error:'課堂尚未開放，請老師完成資料庫與教師密碼設定。'},503);
    let payload;try{payload=await request.json()}catch{return json({error:'資料格式不正確。'},400)}
    if(!payload||Array.isArray(payload)||typeof payload!=='object')return json({error:'資料格式不正確。'},400);
    const headers=new Headers(request.headers);headers.delete('content-length');

@@ -5,7 +5,7 @@ const form=document.getElementById('test-form'),log=document.getElementById('tes
 function line(text){const p=document.createElement('p');p.textContent=text;log.appendChild(p)}
 form.addEventListener('submit',async event=>{
  event.preventDefault();if(button.disabled)return;button.disabled=true;log.textContent='';
- const code=document.getElementById('test-code').value.trim(),teacherPin=document.getElementById('test-pin').value;
+ const teacherPin=document.getElementById('test-pin').value;
  const claimed=[];let success=false;
  try{
   if(!document.getElementById('test-confirm').checked)throw new Error('請先勾選確認：目前沒有學生使用網站。');
@@ -14,9 +14,9 @@ form.addEventListener('submit',async event=>{
   if(before.rows.length)throw new Error('教室已有作答，已停止。測試不會清除原有作品。');
   line('建立 35 個測試作答身分…');
   await Promise.allSettled(Array.from({length:35},async(_,i)=>{
-   const seat=i+1,token=crypto.randomUUID(),row=await rpc(CONFIG,{action:'join',seat,token,code});
+   const seat=i+1,token=crypto.randomUUID(),row=await rpc(CONFIG,{action:'join',seat,token});
    const record={seat,token,...row};claimed.push(record);
-   const writer=new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,{...body,seat,token,code})});
+   const writer=new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,{...body,seat,token})});
    const final={seat,topic:(seat%3)+1,answers:Array.from({length:4},(_,j)=>'連線測試 '+seat+' 號 / '+j),checks:[true,true,true,true]};
    const one=writer.enqueue({...final,answers:['較早草稿','較早草稿','較早草稿','較早草稿']});
    const two=writer.enqueue({...final,answers:['較新草稿','較新草稿','較新草稿','較新草稿']});

@@ -10,9 +10,9 @@ const GUIDANCE=[['位置','人物在哪裡？和其他人或物品有什麼位�
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const story=s=>esc(s).replace(/小傑|小恩|小可|小娜|小琪/g,n=>'<span class="proper-name">'+n+'</span>');
 const namespace='little-writer:'+CONFIG.storageNamespace+':';
-let token='',roomCode='',view='home',session=null,joining=false,teacherPin='',teacherRows=[],selectedTeacherSeat=1,highlight=true;
+let token='',view='home',session=null,joining=false,teacherPin='',teacherRows=[],selectedTeacherSeat=1,highlight=true;
 let autosaveTimer,teacherTimer,teacherController,teacherPromise=null,teacherFingerprint='',loginBusy=false;
-try{token=localStorage.getItem(namespace+'device')||crypto.randomUUID();localStorage.setItem(namespace+'device',token);roomCode=sessionStorage.getItem(namespace+'code')||''}catch{token=crypto.randomUUID();setGlobal('這台裝置無法保存草稿，請保持畫面開啟並通知老師。')}
+try{token=localStorage.getItem(namespace+'device')||crypto.randomUUID();localStorage.setItem(namespace+'device',token)}catch{token=crypto.randomUUID();setGlobal('這台裝置無法保存草稿，請保持畫面開啟並通知老師。')}
 function setGlobal(message=''){globalMessage.textContent=message;globalMessage.hidden=!message}
 function setSync(text){if(view==='write'){const el=document.getElementById('sync-message');if(el)el.textContent=text}}
 function route(next){if(session?.submitting||joining)return;clearTimeout(autosaveTimer);if(!['dashboard','display'].includes(next))stopTeacherPolling();setGlobal('');view=next}
@@ -34,17 +34,16 @@ function seatGrid(a,b,teacher=false){
 }
 function seats(){
  if(session?.submitting||joining)return;route('seats');
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">STEP 01 · FIND YOUR SEAT</span><h1>今天，你是幾號作家？</h1><p>請輸入課堂代碼，再選擇自己的座號。</p></div><button class="secondary" onclick="home()">← 返回首頁</button></div><label class="code">課堂代碼<input id="room-code" autocomplete="off" autocapitalize="off" spellcheck="false" value="'+esc(roomCode)+'" placeholder="老師提供的課堂代碼" oninput="rememberCode(this.value)"></label><div id="joining-status" class="connection-status" role="status" hidden></div><h3>同學座號 <small>01–27</small></h3>'+seatGrid(1,27)+'<h3>觀課老師體驗區 <small>28–35 · 不列入學生統計</small></h3>'+seatGrid(28,35);
+ app.innerHTML='<div class="section-head"><div><span class="eyebrow">STEP 01 · FIND YOUR SEAT</span><h1>今天，你是幾號作家？</h1><p>請選擇自己的座號，一起開始寫故事。</p></div><button class="secondary" onclick="home()">← 返回首頁</button></div><div id="joining-status" class="connection-status" role="status" hidden></div><h3>同學座號 <small>01–27</small></h3>'+seatGrid(1,27)+'<h3>觀課老師體驗區 <small>28–35 · 不列入學生統計</small></h3>'+seatGrid(28,35);
 }
-function rememberCode(value){roomCode=value.trim();try{sessionStorage.setItem(namespace+'code',roomCode)}catch{}}
 async function selectSeat(n){
  if(joining)return;
- try{validateConfig(CONFIG);if(!roomCode)throw new Error('請先輸入老師提供的課堂代碼。')}catch(e){setGlobal(e.message);document.getElementById('room-code')?.focus();return}
+ try{validateConfig(CONFIG)}catch(e){setGlobal(e.message);return}
  joining=true;setGlobal('');document.querySelectorAll('.seat').forEach(el=>el.disabled=true);const status=document.getElementById('joining-status');status.hidden=false;status.textContent='正在確認座號，請稍候…';
  try{
-  const d=await rpc(CONFIG,{action:'join',seat:n,token,code:roomCode});
+  const d=await rpc(CONFIG,{action:'join',seat:n,token});
   const s={seat:n,topic:d.topic,answers:d.answers.length===4?d.answers:['','','',''],checks:[false,false,false,false],submitted:d.status==='submitted',submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null};
-  s.writer=new ReliableWriter({claimId:d.claimId,revision:d.revision,send:body=>rpc(CONFIG,{...body,seat:n,token,code:roomCode}),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}});
+  s.writer=new ReliableWriter({claimId:d.claimId,revision:d.revision,send:body=>rpc(CONFIG,{...body,seat:n,token}),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}});
   const old=cachedDraft(n,d.topic);
   if(!s.submitted&&old?.token===token&&Array.isArray(old.answers)&&old.answers.length===4&&JSON.stringify(old.answers)!==JSON.stringify(s.answers)){
    if(old.claimId===d.claimId&&old.baseRevision===d.revision){s.answers=old.answers;s.dirty=true;s.version++}else s.recovery=old;
@@ -167,6 +166,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&['dashboa
 setInterval(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false)},6000);
 
 async function downloadWorks(){try{const data=await rpc(CONFIG,{action:'teacher',teacherPin},{retries:0});const text=data.rows.map(r=>'【'+String(r.seat).padStart(2,'0')+' 號】'+getLesson(r.topic).title+'\n'+(r.status==='submitted'?'已繳交':'草稿')+'\n'+getLesson(r.topic).parts.map((p,i)=>p+(i<4?(r.answers[i]||'＿＿＿＿'):'')).join('')).join('\n\n--------------------\n\n');const link=document.createElement('a');const url=URL.createObjectURL(new Blob(['國語寫作作品備份\n下載時間：'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'\n\n'+text],{type:'text/plain;charset=utf-8'}));link.href=url;link.download='國語寫作作品_'+new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date())+'.txt';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){setGlobal(e.message)}}
-Object.assign(window,{downloadWorks,home,seats,rememberCode,selectSeat,chooseTopic,openWriting,editAnswer,setComposing,checkWork,refreshParagraph,saveDraft,submitWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,toggleChristmas});
+Object.assign(window,{downloadWorks,home,seats,selectSeat,chooseTopic,openWriting,editAnswer,setComposing,checkWork,refreshParagraph,saveDraft,submitWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,toggleChristmas});
 home();
 

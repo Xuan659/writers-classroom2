@@ -21,7 +21,6 @@ export async function handleClassroom(request,env){
    const r=await db.prepare('DELETE FROM submissions WHERE seat=? AND claim_id=? RETURNING seat').bind(b.seat,b.claimId).first();
    if(r)return reply({ok:true});const current=await db.prepare('SELECT seat FROM submissions WHERE seat=?').bind(b.seat).first();return current?reply({error:'座號狀態已改變，請先更新。'},409):reply({ok:true});
   }
-  if(!env.CLASS_CODE||b.code!==env.CLASS_CODE)return reply({error:'課堂代碼不正確。'},401);
   if(typeof b.token!=='string'||b.token.length<20||b.token.length>100)return reply({error:'裝置識別錯誤。'},400);
   if(b.action==='join'){
    await db.prepare("INSERT INTO submissions (seat,topic,token,answers,status,updated,claim_id,revision,last_request) VALUES (?,1,?,'[]','writing',?,?,0,'') ON CONFLICT(seat) DO NOTHING").bind(b.seat,b.token,new Date().toISOString(),crypto.randomUUID()).run();
