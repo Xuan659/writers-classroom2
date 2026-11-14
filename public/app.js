@@ -11,11 +11,12 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const story=s=>esc(s).replace(/小傑|小恩|小可|小娜|小琪/g,n=>'<span class="proper-name">'+n+'</span>');
 const namespace='little-writer:'+CONFIG.storageNamespace+':';
 let token='',view='home',session=null,joining=false,teacherPin='',teacherRows=[],selectedTeacherSeat=1,highlight=true;
-let autosaveTimer,teacherTimer,teacherController,teacherPromise=null,teacherFingerprint='',loginBusy=false;
+let autosaveTimer,teacherTimer,teacherController,teacherPromise=null,teacherFingerprint='',loginBusy=false,loginAttempt=0,loginController=null,displayedKey='';
+const pendingResize=new WeakSet();
 try{token=localStorage.getItem(namespace+'device')||crypto.randomUUID();localStorage.setItem(namespace+'device',token)}catch{token=crypto.randomUUID();setGlobal('這台裝置無法保存草稿，請保持畫面開啟並通知老師。')}
 function setGlobal(message=''){globalMessage.textContent=message;globalMessage.hidden=!message}
-function setSync(text){if(view==='write'){const el=document.getElementById('sync-message');if(el)el.textContent=text}}
-function route(next){if(session?.submitting||joining)return;clearTimeout(autosaveTimer);if(!['dashboard','display'].includes(next))stopTeacherPolling();setGlobal('');view=next}
+function setSync(text){if(view==='write'){const el=document.getElementById('sync-message');if(el&&el.textContent!==text)el.textContent=text}}
+function route(next){if(session?.submitting||joining)return;clearTimeout(autosaveTimer);if(next!=='login'){loginController?.abort();loginController=null;loginBusy=false;loginAttempt++}if(!['dashboard','display'].includes(next))stopTeacherPolling();setGlobal('');view=next}
 function getLesson(id){return LESSONS.find(x=>x.id===id)||LESSONS[0]}
 function persistDraft(s){
  try{localStorage.setItem(namespace+'draft:'+s.seat+':'+s.topic,JSON.stringify({token,claimId:s.writer.claimId,baseRevision:s.writer.revision,answers:s.answers}))}
@@ -29,7 +30,7 @@ function home(){
 function seatGrid(a,b,teacher=false){
  return '<div class="seat-grid">'+Array.from({length:b-a+1},(_,i)=>a+i).map(n=>{
  const r=teacherRows.find(x=>x.seat===n);
- return '<button class="seat '+(teacher?(r?.status||'waiting'):'')+'" '+(!teacher&&joining?'disabled':'')+' onclick="'+(teacher?'displayWork':'selectSeat')+'('+n+')"><strong>'+String(n).padStart(2,'0')+'</strong><span>'+(teacher?(r?.status==='submitted'?'已繳交':r?'寫作中':'尚未進入'):n>27?'老師試填':'號')+'</span></button>';
+ return '<button class="seat '+(teacher?(r?.status||'waiting'):'')+'" data-seat="'+n+'" '+(!teacher&&joining?'disabled':'')+' onclick="'+(teacher?'displayWork':'selectSeat')+'('+n+')"><strong>'+String(n).padStart(2,'0')+'</strong><span>'+(teacher?(r?.status==='submitted'?'已繳交':r?'寫作中':'尚未進入'):n>27?'老師試填':'號')+'</span></button>';
  }).join('')+'</div>';
 }
 function seats(){
@@ -37,7 +38,7 @@ function seats(){
  app.innerHTML='<div class="section-head"><div><span class="eyebrow">STEP 01 · FIND YOUR SEAT</span><h1>今天，你是幾號作家？</h1><p>請選擇自己的座號，一起開始寫故事。</p></div><button class="secondary" onclick="home()">← 返回首頁</button></div><div id="joining-status" class="connection-status" role="status" hidden></div><h3>同學座號 <small>01–27</small></h3>'+seatGrid(1,27)+'<h3>觀課老師體驗區 <small>28–35 · 不列入學生統計</small></h3>'+seatGrid(28,35);
 }
 async function selectSeat(n){
- if(joining)return;
+ if(joining||view!=='seats')return;
  try{validateConfig(CONFIG)}catch(e){setGlobal(e.message);return}
  joining=true;setGlobal('');document.querySelectorAll('.seat').forEach(el=>el.disabled=true);const status=document.getElementById('joining-status');status.hidden=false;status.textContent='正在確認座號，請稍候…';
  try{
@@ -70,20 +71,22 @@ function openWriting(topic){
  route('write');const lesson=getLesson(s.topic);
  app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+s.seat+' 號 · '+(s.seat>27?'觀課老師體驗':'我的寫作練習')+'</span><h1>'+esc(lesson.title)+'</h1></div><button class="secondary writing-back" onclick="'+(s.submitted?'seats()':'chooseTopic()')+'">← '+(s.submitted?'返回座號':'返回題目選擇')+'</button></div>'+
  (s.recovery?'<div class="alert">找到版本不同的本機草稿，尚未覆蓋目前作品。<button class="secondary" onclick="restoreDraft()">確認復原本機草稿</button></div>':'')+
- '<div class="writing-tip">依序完成四個空格，字數不限。</div><article class="writing-paper">'+lesson.parts.map((p,i)=>story(p)+(i<4?'<label class="blank" data-kind="'+lesson.labels[i]+'"><span>'+lesson.labels[i]+'</span><textarea rows="1" aria-label="'+lesson.labels[i]+'" placeholder="'+esc(lesson.hints[i])+'" '+(s.submitted?'disabled':'')+' oninput="editAnswer('+i+',this)" oncompositionstart="setComposing(true)" oncompositionend="setComposing(false)">'+esc(s.answers[i])+'</textarea></label>':'')).join('')+'</article>'+
+ '<div class="writing-tip">依序完成四個空格，字數不限。</div><article class="writing-paper">'+lesson.parts.map((p,i)=>story(p)+(i<4?'<label class="blank" data-kind="'+lesson.labels[i]+'"><span>'+lesson.labels[i]+'</span><textarea rows="1" aria-label="'+lesson.labels[i]+'" placeholder="'+esc(lesson.hints[i])+'" '+(s.submitted?'disabled':'')+' oninput="editAnswer('+i+',this)" oncompositionstart="setComposing(true)" oncompositionend="finishComposing('+i+',this)">'+esc(s.answers[i])+'</textarea></label>':'')).join('')+'</article>'+
  (!s.submitted?'<fieldset class="self-check"><legend>自我檢核 <small>修改文字後，請重新檢查</small></legend><div class="check-grid">'+CHECKS.map((label,i)=>'<label><input type="checkbox" '+(s.checks[i]?'checked':'')+' onchange="checkWork('+i+',this.checked)"><span>'+label+'</span></label>').join('')+'</div></fieldset>':'')+
  '<div class="submit-reminder" id="submit-reminder" role="alert" hidden></div><div class="actions writing-actions"><span class="save-note" id="sync-message" role="status">'+(s.submitted?'✓ 已成功繳交':s.dirty?'草稿保留中…':'草稿已同步')+'</span>'+
  (s.submitted?'<span class="success">✓ 已繳交</span>':'<button class="secondary save-button" onclick="saveDraft()">儲存草稿</button><button class="primary submit-button" onclick="submitWork()">完成，繳交作品 ↗</button>')+
  '</div>'+(s.unsentBackup?'<details class="writing-preview"><summary>查看本機未繳交的修改</summary><div class="reading">'+paragraph(getLesson(s.unsentBackup.topic||s.topic),s.unsentBackup.answers)+'</div></details>':'')+'<details class="writing-preview" id="story-preview" ontoggle="refreshParagraph()"><summary>看看我的完整段落</summary><div class="reading" id="live-story"></div></details>';
  requestAnimationFrame(()=>document.querySelectorAll('.writing-paper textarea').forEach(fitWritingField));refreshParagraph();if(s.dirty)scheduleSave();
 }
-function fitWritingField(field){field.style.height='auto';field.style.height=Math.max(44,field.scrollHeight+2)+'px'}
+function fitWritingField(field){if(pendingResize.has(field))return;pendingResize.add(field);requestAnimationFrame(()=>{pendingResize.delete(field);if(field.isConnected===false)return;field.style.height='auto';field.style.height=Math.max(44,field.scrollHeight+2)+'px'})}
 function editAnswer(i,field){
  const s=session;if(!s||s.submitted||s.submitting)return;
+ if(s.answers[i]===field.value){fitWritingField(field);return}
  s.answers[i]=field.value;s.checks=[false,false,false,false];s.version++;s.dirty=true;
  document.querySelectorAll('.self-check input').forEach(el=>el.checked=false);document.getElementById('submit-reminder').hidden=true;
  fitWritingField(field);persistDraft(s);setSync('草稿保留中…');scheduleSave();refreshParagraph();
 }
+function finishComposing(i,field){if(session){session.composing=false;editAnswer(i,field);scheduleSave()}}
 function setComposing(value){if(session){session.composing=value;if(!value)scheduleSave()}}
 function checkWork(i,value){if(session&&!session.submitting){session.checks[i]=value;if(session.checks.every(Boolean))document.getElementById('submit-reminder').hidden=true}}
 function refreshParagraph(){const preview=document.getElementById('story-preview');if(view==='write'&&session&&preview?.open)document.getElementById('live-story').innerHTML=paragraph(getLesson(session.topic),session.answers)}
@@ -117,25 +120,46 @@ function restoreDraft(){
  s.answers=s.recovery.answers;s.recovery=null;s.version++;s.dirty=true;s.checks=[false,false,false,false];persistDraft(s);openWriting(s.topic);
 }
 function teacherEntry(){
- if(session?.submitting||joining)return;if(teacherPin){dashboard();return}route('login');
+ if(session?.submitting||joining||view==='login')return;if(teacherPin){dashboard();return}route('login');
  app.innerHTML='<div class="login"><span class="eyebrow">TEACHER’S DESK</span><h1>教師控制台</h1><p>掌握寫作進度，展示學生的完整作品。</p><form onsubmit="loginTeacher(event)"><label>教師密碼<input id="teacher-pin" type="password" autocomplete="current-password" required></label><button class="primary" id="teacher-login-button">進入控制台 ↗</button></form><button class="text-btn" onclick="home()">← 返回首頁</button></div>';
 }
 async function loginTeacher(event){
- event.preventDefault();if(loginBusy)return;loginBusy=true;setGlobal('');const button=document.getElementById('teacher-login-button');button.disabled=true;button.textContent='正在確認…';
+ event.preventDefault();if(loginBusy)return;loginBusy=true;setGlobal('');const attempt=++loginAttempt,controller=new AbortController();loginController=controller;
+ const button=document.getElementById('teacher-login-button');button.disabled=true;button.textContent='正在確認…';
  const pin=document.getElementById('teacher-pin').value;
- try{const data=await rpc(CONFIG,{action:'teacher',teacherPin:pin},{retries:0});teacherPin=pin;teacherRows=data.rows;teacherFingerprint='';dashboard()}catch(e){setGlobal(e.message);button.disabled=false;button.textContent='進入控制台 ↗'}finally{loginBusy=false}
+ try{const data=await rpc(CONFIG,{action:'teacher',teacherPin:pin},{retries:0,signal:controller.signal});if(controller.signal.aborted||attempt!==loginAttempt||view!=='login')return;teacherPin=pin;teacherRows=data.rows;teacherFingerprint='';dashboard()}
+ catch(e){if(!controller.signal.aborted&&attempt===loginAttempt&&view==='login'){setGlobal(e.message);button.disabled=false;button.textContent='進入控制台 ↗'}}
+ finally{if(loginController===controller){loginController=null;loginBusy=false}}
 }
 function dashboard(){
  if(!teacherPin){teacherEntry();return}route('dashboard');
  const done=teacherRows.filter(r=>r.seat<=27&&r.status==='submitted').length,writing=teacherRows.filter(r=>r.seat<=27&&r.status!=='submitted').length;
- app.innerHTML='<div class="dashboard-heading"><div><span class="eyebrow">TEACHER’S DESK</span><h1>每一個故事，都在發生。</h1><p>點選座號展示作品。連線正常時約每 4 秒更新。</p></div><div class="header-actions"><button class="secondary" onclick="home()">← 返回首頁</button><button class="secondary" onclick="refreshTeacher()">↻ 更新</button><button class="secondary" onclick="downloadWorks()">下載作品備份</button></div></div><div id="teacher-status" class="teacher-status" role="status"></div><div class="stats"><div><strong>'+done+'<small> / 27</small></strong><span>學生已繳交</span></div><div><strong>'+writing+'</strong><span>學生寫作中</span></div><div><strong>'+(27-done-writing)+'</strong><span>尚未進入</span></div><div><strong>'+teacherRows.filter(r=>r.seat>27&&r.status==='submitted').length+'<small> / 8</small></strong><span>觀課老師已繳交</span></div></div>'+seatGrid(1,27,true)+'<h3>觀課老師體驗區</h3>'+seatGrid(28,35,true);
+ app.innerHTML='<div class="dashboard-heading"><div><span class="eyebrow">TEACHER’S DESK</span><h1>每一個故事，都在發生。</h1><p>點選座號展示作品。連線正常時約每 4 秒更新。</p></div><div class="header-actions"><button class="secondary" onclick="home()">← 返回首頁</button><button class="secondary" onclick="refreshTeacher()">↻ 更新</button><button class="secondary" onclick="downloadWorks()">下載作品備份</button></div></div><div id="teacher-status" class="teacher-status" role="status"></div><div class="stats"><div><strong><span id="count-submitted">'+done+'</span><small> / 27</small></strong><span>學生已繳交</span></div><div><strong id="count-writing">'+writing+'</strong><span>學生寫作中</span></div><div><strong id="count-waiting">'+(27-done-writing)+'</strong><span>尚未進入</span></div><div><strong><span id="count-observers">'+teacherRows.filter(r=>r.seat>27&&r.status==='submitted').length+'</span><small> / 8</small></strong><span>觀課老師已繳交</span></div></div>'+seatGrid(1,27,true)+'<h3>觀課老師體驗區</h3>'+seatGrid(28,35,true);
  startTeacherPolling();
 }
 function displayWork(n){
- if(!teacherPin){teacherEntry();return}selectedTeacherSeat=n;route('display');const r=teacherRows.find(x=>x.seat===n),lesson=getLesson(r?.topic);
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(n>27?'觀課老師作品':'小小作家的作品')+'</span><h1><span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目')+'</h1></div><button class="secondary" onclick="dashboard()">返回座號總覽</button></div><div class="display-tools"><span>'+(r?(r.status==='submitted'?'✓ 已繳交':'✎ 尚未繳交（草稿）'):'尚未進入')+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⛶ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper">'+(r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="displayWork('+(n-1)+')">← 上一號</button><span>'+n+' / 35</span><button class="primary" '+(n===35?'disabled':'')+' onclick="displayWork('+(n+1)+')">下一號 →</button></div>'+(r?'<button class="text-btn release" onclick="releaseSeat('+n+')">解除此座號並清除作答</button>':'');
+ if(!teacherPin){teacherEntry();return}selectedTeacherSeat=n;route('display');const r=teacherRows.find(x=>x.seat===n),lesson=getLesson(r?.topic);displayedKey=teacherRowKey(r);
+ app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(n>27?'觀課老師作品':'小小作家的作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目')+'</h1></div><button class="secondary" onclick="dashboard()">返回座號總覽</button></div><div class="display-tools"><span id="teacher-work-status">'+(r?(r.status==='submitted'?'✓ 已繳交':'✎ 尚未繳交（草稿）'):'尚未進入')+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⛶ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="displayWork('+(n-1)+')">← 上一號</button><span>'+n+' / 35</span><button class="primary" '+(n===35?'disabled':'')+' onclick="displayWork('+(n+1)+')">下一號 →</button></div>'+'<button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="releaseSeat('+n+')">解除此座號並清除作答</button>';
  startTeacherPolling();
 }
+
+function teacherRowKey(r){return r?[r.seat,r.claimId,r.revision,r.status].join(':'):'none'}
+function updateTeacherUI(){
+ if(view==='dashboard'){
+  const done=teacherRows.filter(r=>r.seat<=27&&r.status==='submitted').length,writing=teacherRows.filter(r=>r.seat<=27&&r.status!=='submitted').length;
+  const values={'count-submitted':done,'count-writing':writing,'count-waiting':27-done-writing,'count-observers':teacherRows.filter(r=>r.seat>27&&r.status==='submitted').length};
+  for(const [id,value] of Object.entries(values)){const el=document.getElementById(id);if(el&&el.textContent!==String(value))el.textContent=String(value)}
+  document.querySelectorAll('.seat[data-seat]').forEach(button=>{const r=teacherRows.find(row=>row.seat===Number(button.dataset.seat));button.classList.toggle('submitted',r?.status==='submitted');button.classList.toggle('writing',!!r&&r.status!=='submitted');button.classList.toggle('waiting',!r);const label=button.querySelector('span');const text=r?.status==='submitted'?'已繳交':r?'寫作中':'尚未進入';if(label&&label.textContent!==text)label.textContent=text});
+ }else if(view==='display'){
+  const n=selectedTeacherSeat,r=teacherRows.find(row=>row.seat===n),key=teacherRowKey(r);if(key===displayedKey)return;displayedKey=key;
+  const lesson=getLesson(r?.topic),title=document.getElementById('teacher-work-title'),status=document.getElementById('teacher-work-status'),paper=document.getElementById('teacher-story'),release=document.getElementById('release-seat');
+  if(title)title.innerHTML='<span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目');
+  if(status)status.textContent=r?(r.status==='submitted'?'✓ 已繳交':'✎ 尚未繳交（草稿）'):'尚未進入';
+  if(paper)paper.innerHTML=r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>';
+  if(release)release.hidden=!r;
+ }
+}
+
 function toggleHighlight(value){highlight=value;document.querySelectorAll('.reading mark').forEach(el=>el.classList.toggle('plain',!value));document.querySelectorAll('.display-label').forEach(el=>el.hidden=!value)}
 async function toggleFullScreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{setGlobal('此裝置不支援全螢幕，可以直接使用目前展示畫面。')}}
 function stopTeacherPolling(){clearTimeout(teacherTimer);teacherController?.abort();teacherController=null}
@@ -149,7 +173,7 @@ async function refreshTeacher(){
    if(controller.signal.aborted||!['dashboard','display'].includes(view))return;
    const fingerprint=JSON.stringify(result.rows.map(r=>[r.seat,r.claimId,r.revision,r.status]));
    teacherRows=result.rows;
-   if(fingerprint!==teacherFingerprint){teacherFingerprint=fingerprint;if(view==='dashboard')dashboard();else displayWork(selectedTeacherSeat)}
+   if(fingerprint!==teacherFingerprint){teacherFingerprint=fingerprint;updateTeacherUI()}
    const status=document.getElementById('teacher-status');if(status)status.textContent='✓ 最近同步 '+new Date().toLocaleTimeString('zh-TW',{hour12:false,timeZone:'Asia/Taipei'});
   }catch(e){if(!controller.signal.aborted){const status=document.getElementById('teacher-status');if(status)status.textContent='更新暫時失敗，保留上次成功資料。可按更新重試。'}}
   finally{teacherPromise=null;startTeacherPolling()}
@@ -167,6 +191,6 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&['dashboa
 setInterval(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false)},6000);
 
 async function downloadWorks(){try{const data=await rpc(CONFIG,{action:'teacher',teacherPin},{retries:0});const text=data.rows.map(r=>'【'+String(r.seat).padStart(2,'0')+' 號】'+getLesson(r.topic).title+'\n'+(r.status==='submitted'?'已繳交':'草稿')+'\n'+getLesson(r.topic).parts.map((p,i)=>p+(i<4?(r.answers[i]||'＿＿＿＿'):'')).join('')).join('\n\n--------------------\n\n');const link=document.createElement('a');const url=URL.createObjectURL(new Blob(['國語寫作作品備份\n下載時間：'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'\n\n'+text],{type:'text/plain;charset=utf-8'}));link.href=url;link.download='國語寫作作品_'+new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date())+'.txt';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){setGlobal(e.message)}}
-Object.assign(window,{downloadWorks,home,seats,selectSeat,chooseTopic,openWriting,editAnswer,setComposing,checkWork,refreshParagraph,saveDraft,submitWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,toggleChristmas});
+Object.assign(window,{downloadWorks,home,seats,selectSeat,chooseTopic,openWriting,editAnswer,setComposing,finishComposing,checkWork,refreshParagraph,saveDraft,submitWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,toggleChristmas});
 home();
 
