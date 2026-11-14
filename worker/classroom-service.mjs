@@ -1,5 +1,6 @@
+import {databaseFailure} from './diagnostics.mjs';
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
-const publicRow=r=>({seat:r.seat,topic:r.topic,answers:JSON.parse(r.answers),status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id});
+const publicRow=r=>{let answers=JSON.parse(r.answers);if(Array.isArray(answers)&&answers.length===0)answers=['','','',''];if(!Array.isArray(answers)||answers.length!==4||answers.some(x=>typeof x!=='string'))throw Object.assign(new Error('Invalid stored answers'),{code:'DB_CONTENT_INVALID'});return{seat:r.seat,topic:r.topic,answers,status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id}};
 const own=(r,b)=>r&&r.token===b.token&&r.claim_id===b.claimId;
 export async function handleClassroom(request,env){
  try{
@@ -43,6 +44,6 @@ export async function handleClassroom(request,env){
   row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
   if(own(row,b)&&row.last_request===b.requestId)return reply({ok:true,status:row.status,revision:row.revision});
   return reply({error:'作品已由另一個頁面更新，已阻止舊內容覆蓋。請保留本機草稿並重新選取座號。'},409);
- }catch{return reply({error:'連線暫時忙碌，草稿仍保留，請稍後重試。'},503)}
+ }catch(error){const detail=databaseFailure(error);return reply(detail,detail.status)}
 }
 
