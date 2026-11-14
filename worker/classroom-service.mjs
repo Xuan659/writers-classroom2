@@ -1,14 +1,21 @@
 import {databaseFailure} from './diagnostics.mjs';
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
-const publicRow=r=>{let answers=JSON.parse(r.answers);if(Array.isArray(answers)&&answers.length===0)answers=['','','',''];if(!Array.isArray(answers)||answers.length!==4||answers.some(x=>typeof x!=='string'))throw Object.assign(new Error('Invalid stored answers'),{code:'DB_CONTENT_INVALID'});return{seat:r.seat,topic:r.topic,answers,status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id}};
+const publicRow=r=>{let answers=JSON.parse(r.answers);if(Array.isArray(answers)&&answers.length===0)answers=['','','',''];if(!Array.isArray(answers)||answers.length!==4||answers.some(x=>typeof x!=='string'))throw Object.assign(new Error('Invalid stored answers'),{code:'DB_CONTENT_INVALID'});return{seat:r.seat,topic:r.topic,answers,status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id,isRevision:r.claim_id.startsWith('edit:')}};
 const own=(r,b)=>r&&r.token===b.token&&r.claim_id===b.claimId;
-export async function handleClassroom(request,env){
+export async function handleClassroom(request,env,{knownRows=null}={}){
  try{
   const db=env.DB;
   if(!db)return reply({error:'網站資料庫尚未就緒，請老師確認設定。'},503);
   const isTeacher=!!env.TEACHER_PIN&&request.headers.get('x-teacher-pin')===env.TEACHER_PIN;
   if(request.method==='GET'){
    if(!isTeacher)return reply({error:'教師密碼不正確。'},401);
+   const known=Array.isArray(knownRows)&&knownRows.length<=35&&knownRows.every(r=>r&&Number.isInteger(r.seat)&&r.seat>=1&&r.seat<=35&&typeof r.claimId==='string'&&Number.isInteger(r.revision)&&typeof r.status==='string')?new Map(knownRows.map(r=>[r.seat,r])):null;
+   if(known){
+    const metadata=(await db.prepare('SELECT seat,status,revision,claim_id FROM submissions ORDER BY seat').all()).results;
+    const changed=metadata.filter(r=>{const old=known.get(r.seat);return !old||old.claimId!==r.claim_id||old.revision!==r.revision||old.status!==r.status});
+    const rows=changed.length?(await db.prepare('SELECT seat,topic,answers,status,updated,revision,claim_id FROM submissions WHERE seat IN ('+changed.map(()=>'?').join(',')+') ORDER BY seat').bind(...changed.map(r=>r.seat)).all()).results.map(publicRow):[];
+    return reply({delta:true,rows,seats:metadata.map(r=>r.seat)});
+   }
    const result=await db.prepare('SELECT seat,topic,answers,status,updated,revision,claim_id FROM submissions ORDER BY seat').all();
    return reply({rows:result.results.map(publicRow)});
   }
@@ -28,6 +35,18 @@ export async function handleClassroom(request,env){
    const row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
    if(!row||row.token!==b.token)return reply({error:'這個座號已被另一台裝置選用，請確認座號；換裝置請老師解除。'},409);
    return reply(publicRow(row));
+  }
+  if(b.action==='reopen'){
+   if(!Number.isInteger(b.revision)||b.revision<0||typeof b.claimId!=='string'||typeof b.requestId!=='string'||b.requestId.length<20||b.requestId.length>100)return reply({error:'作品狀態已改變，請重新選取座號。'},409);
+   let row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
+   // The new claim fences saves/submits from the previous editing session.
+   if(row?.status==='writing'&&row.token===b.token&&row.last_request===b.requestId&&row.claim_id.startsWith('edit:'))return reply(publicRow(row));
+   if(!own(row,b))return reply({error:'座號使用權或作品版本已改變，請重新選取座號。'},409);
+   const reopened=await db.prepare("UPDATE submissions SET status='writing',claim_id=?,revision=revision+1,last_request=?,updated=? WHERE seat=? AND token=? AND claim_id=? AND revision=? AND status='submitted' RETURNING *").bind('edit:'+crypto.randomUUID(),b.requestId,new Date().toISOString(),b.seat,b.token,b.claimId,b.revision).first();
+   if(reopened)return reply(publicRow(reopened));
+   row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
+   if(row?.status==='writing'&&row.token===b.token&&row.last_request===b.requestId&&row.claim_id.startsWith('edit:'))return reply(publicRow(row));
+   return reply({error:'作品已由另一個分頁更新，請重新選取座號後再修改。'},409);
   }
   if(!['save','submit'].includes(b.action)||![1,2,3].includes(b.topic)||!Array.isArray(b.answers)||b.answers.length!==4||b.answers.some(x=>typeof x!=='string'))return reply({error:'請檢查題目與填空內容。'},400);
   if(!Number.isInteger(b.revision)||b.revision<0||typeof b.claimId!=='string'||typeof b.requestId!=='string'||b.requestId.length<20||b.requestId.length>100)return reply({error:'作答連線狀態已改變，請重新選取座號。'},409);

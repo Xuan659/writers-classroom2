@@ -12,13 +12,18 @@ const story=s=>esc(s).replace(/小傑|小恩|小可|小娜|小琪/g,n=>'<span cl
 const namespace='little-writer:'+CONFIG.storageNamespace+':';
 let token='',view='home',session=null,joining=false,teacherPin='',teacherRows=[],selectedTeacherSeat=1,highlight=true;
 let autosaveTimer,teacherTimer,teacherController,teacherPromise=null,teacherFingerprint='',loginBusy=false,loginAttempt=0,loginController=null,displayedKey='';
-const pendingResize=new WeakSet();
+const pendingResize=new WeakSet(),localDraftTimers=new WeakMap();let previewPending=false;
 try{token=localStorage.getItem(namespace+'device')||crypto.randomUUID();localStorage.setItem(namespace+'device',token)}catch{token=crypto.randomUUID();setGlobal('這台裝置無法保存草稿，請保持畫面開啟並通知老師。')}
 function setGlobal(message=''){globalMessage.textContent=message;globalMessage.hidden=!message}
 function setSync(text){if(view==='write'){const el=document.getElementById('sync-message');if(el&&el.textContent!==text)el.textContent=text}}
-function route(next){if(session?.submitting||joining)return;clearTimeout(autosaveTimer);if(next!=='login'){loginController?.abort();loginController=null;loginBusy=false;loginAttempt++}if(!['dashboard','display'].includes(next))stopTeacherPolling();setGlobal('');view=next}
+function route(next){if(session?.submitting||joining)return;clearTimeout(autosaveTimer);if(session?.dirty)persistDraft(session);if(next!=='login'){loginController?.abort();loginController=null;loginBusy=false;loginAttempt++}if(!['dashboard','display'].includes(next))stopTeacherPolling();setGlobal('');view=next}
 function getLesson(id){return LESSONS.find(x=>x.id===id)||LESSONS[0]}
+function scheduleLocalDraft(s){
+ if(localDraftTimers.has(s))return;
+ localDraftTimers.set(s,setTimeout(()=>persistDraft(s),150));
+}
 function persistDraft(s){
+ clearTimeout(localDraftTimers.get(s));localDraftTimers.delete(s);
  try{localStorage.setItem(namespace+'draft:'+s.seat+':'+s.topic,JSON.stringify({token,claimId:s.writer.claimId,baseRevision:s.writer.revision,answers:s.answers}))}
  catch{if(s===session)setGlobal('本機草稿無法儲存，請保持頁面開啟並通知老師。')}
 }
@@ -30,7 +35,7 @@ function home(){
 function seatGrid(a,b,teacher=false){
  return '<div class="seat-grid">'+Array.from({length:b-a+1},(_,i)=>a+i).map(n=>{
  const r=teacherRows.find(x=>x.seat===n);
- return '<button class="seat '+(teacher?(r?.status||'waiting'):'')+'" data-seat="'+n+'" '+(!teacher&&joining?'disabled':'')+' onclick="'+(teacher?'displayWork':'selectSeat')+'('+n+')"><strong>'+String(n).padStart(2,'0')+'</strong><span>'+(teacher?(r?.status==='submitted'?'已繳交':r?'寫作中':'尚未進入'):n>27?'老師試填':'號')+'</span></button>';
+ return '<button class="seat '+(teacher?(r?.status||'waiting'):'')+'" data-seat="'+n+'" '+(!teacher&&joining?'disabled':'')+' onclick="'+(teacher?'displayWork':'selectSeat')+'('+n+')"><strong>'+String(n).padStart(2,'0')+'</strong><span>'+(teacher?(workStatus(r)):n>27?'老師試填':'號')+'</span></button>';
  }).join('')+'</div>';
 }
 function seats(){
@@ -43,8 +48,8 @@ async function selectSeat(n){
  joining=true;setGlobal('');document.querySelectorAll('.seat').forEach(el=>el.disabled=true);const status=document.getElementById('joining-status');status.hidden=false;status.textContent='正在確認座號，請稍候…';
  try{
   const d=await rpc(CONFIG,{action:'join',seat:n,token});
-  const s={seat:n,topic:d.topic,answers:d.answers.length===4?d.answers:['','','',''],checks:[false,false,false,false],submitted:d.status==='submitted',submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null};
-  s.writer=new ReliableWriter({claimId:d.claimId,revision:d.revision,send:body=>rpc(CONFIG,{...body,seat:n,token}),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}});
+  const s={seat:n,topic:d.topic,answers:d.answers.length===4?d.answers:['','','',''],checks:[false,false,false,false],submitted:d.status==='submitted',revising:!!d.isRevision,submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null,retryAt:0,failures:0};
+  s.writer=makeWriter(s,d);
   const old=cachedDraft(n,d.topic);
   if(!s.submitted&&old?.token===token&&Array.isArray(old.answers)&&old.answers.length===4&&JSON.stringify(old.answers)!==JSON.stringify(s.answers)){
    if(old.claimId===d.claimId&&old.baseRevision===d.revision){s.answers=old.answers;s.dirty=true;s.version++}else s.recovery=old;
@@ -54,27 +59,42 @@ async function selectSeat(n){
   session=s;joining=false;if(s.submitted)openWriting(d.topic);else chooseTopic();
  }catch(e){joining=false;setGlobal(e.message);document.querySelectorAll('.seat').forEach(el=>el.disabled=false);status.hidden=true}
 }
+function makeWriter(s,row){return new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,{...body,seat:s.seat,token}),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}})}
+function workStatus(r){return !r?'尚未進入':r.status==='submitted'?'已繳交':r.isRevision?'修改中':'寫作中'}
+function workDetail(r){return !r?'尚未進入':r.status==='submitted'?'✓ 已繳交':r.isRevision?'✎ 修改中（草稿）':'✎ 尚未繳交（草稿）'}
+async function reopenWork(){
+ const s=session;if(!s?.submitted||s.submitting||view!=='write')return;
+ s.submitting=true;setWritingLocked(true);setGlobal('');
+ const button=document.querySelector('.edit-button');if(button)button.textContent='正在開放修改…';
+ s.reopenRequest ||= {action:'reopen',seat:s.seat,token,claimId:s.writer.claimId,revision:s.writer.revision,requestId:crypto.randomUUID()};
+ try{
+  const row=await rpc(CONFIG,s.reopenRequest);
+  s.writer=makeWriter(s,row);s.answers=[...row.answers];s.topic=row.topic;s.submitted=false;s.revising=true;s.checks=[false,false,false,false];s.submitting=false;s.pending=null;s.reopenRequest=null;s.version=0;s.dirty=false;s.composing=false;s.recovery=null;s.retryAt=0;s.failures=0;
+  persistDraft(s);openWriting(s.topic);setSync('修改中，完成後請重新檢核並更新繳交。');
+ }catch(e){setGlobal(e.status?e.message:'尚未確認是否已開放修改，請保留本頁，再按一次「修改作品」重試。')}
+ finally{s.submitting=false;if(s===session&&view==='write'){if(!s.submitted)setWritingLocked(false);const b=document.querySelector('.edit-button');if(b){b.disabled=false;b.textContent='修改作品'}}}
+}
 function chooseTopic(){
  if(!session||session.submitting)return;
- route('topics');if(session.submitted){openWriting(session.topic);return}
+ route('topics');if(session.submitted||session.revising){openWriting(session.topic);return}
  app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+session.seat+' 號 · STEP 02</span><h1>選一個故事，開始寫作。</h1><p>選擇一個題目，完成位置、動作、對話與想法。填空字數不限。</p></div><button class="secondary" onclick="seats()">← 返回座號</button></div><div class="topic-grid">'+LESSONS.map(l=>'<button class="topic-card" onclick="openWriting('+l.id+')"><span class="eyebrow">題目 0'+l.id+'</span><h2>'+esc(l.title)+'</h2><p>'+story(l.parts[0])+'……</p><span>選擇這個故事 ↗</span></button>').join('')+'</div>';
 }
 function displayAnswer(label,value){const text=value||'＿＿＿＿';const name=text.match(/^(小傑|小恩|小可|小娜|小琪)/);const first=name?name[0]:(Array.from(text)[0]||'');const rest=text.slice(first.length);const cls=highlight?'':'plain';return '<span class="display-answer" data-kind="'+esc(label)+'"><span class="display-answer-start"><span class="display-label" '+(highlight?'':'hidden')+'>'+esc(label)+'</span><mark class="'+cls+'">'+story(first)+'</mark></span><mark class="'+cls+'">'+story(rest)+'</mark></span>'}
 function paragraph(lesson,answers,withLabels=false){return lesson.parts.map((p,i)=>story(p)+(i<4?(withLabels?displayAnswer(lesson.labels[i],answers[i]):'<mark class="'+(highlight?'':'plain')+'">'+story(answers[i]||'＿＿＿＿')+'</mark>'):'')).join('')}
 function openWriting(topic){
  const s=session;if(!s||s.submitting)return;
- if(s.submitted)topic=s.topic;
+ if(s.submitted||s.revising)topic=s.topic;
  if(topic!==s.topic){
   persistDraft(s);const c=cachedDraft(s.seat,topic);
   s.topic=topic;s.answers=c?.token===token&&c.claimId===s.writer.claimId&&c.answers?.length===4?c.answers:['','','',''];s.checks=[false,false,false,false];s.dirty=true;s.version++;s.recovery=null;
  }
  route('write');const lesson=getLesson(s.topic);
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+s.seat+' 號 · '+(s.seat>27?'觀課老師體驗':'我的寫作練習')+'</span><h1>'+esc(lesson.title)+'</h1></div><button class="secondary writing-back" onclick="'+(s.submitted?'seats()':'chooseTopic()')+'">← '+(s.submitted?'返回座號':'返回題目選擇')+'</button></div>'+
+ app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+s.seat+' 號 · '+(s.seat>27?'觀課老師體驗':'我的寫作練習')+'</span><h1>'+esc(lesson.title)+'</h1></div><button class="secondary writing-back" onclick="'+(s.submitted||s.revising?'seats()':'chooseTopic()')+'">← '+(s.submitted||s.revising?'返回座號':'返回題目選擇')+'</button></div>'+
  (s.recovery?'<div class="alert">找到版本不同的本機草稿，尚未覆蓋目前作品。<button class="secondary" onclick="restoreDraft()">確認復原本機草稿</button></div>':'')+
  '<div class="writing-tip">依序完成四個空格，字數不限。</div><article class="writing-paper">'+lesson.parts.map((p,i)=>story(p)+(i<4?'<label class="blank" data-kind="'+lesson.labels[i]+'"><span>'+lesson.labels[i]+'</span><textarea rows="1" aria-label="'+lesson.labels[i]+'" placeholder="'+esc(lesson.hints[i])+'" '+(s.submitted?'disabled':'')+' oninput="editAnswer('+i+',this)" oncompositionstart="setComposing(true)" oncompositionend="finishComposing('+i+',this)">'+esc(s.answers[i])+'</textarea></label>':'')).join('')+'</article>'+
  (!s.submitted?'<fieldset class="self-check"><legend>自我檢核 <small>修改文字後，請重新檢查</small></legend><div class="check-grid">'+CHECKS.map((label,i)=>'<label><input type="checkbox" '+(s.checks[i]?'checked':'')+' onchange="checkWork('+i+',this.checked)"><span>'+label+'</span></label>').join('')+'</div></fieldset>':'')+
  '<div class="submit-reminder" id="submit-reminder" role="alert" hidden></div><div class="actions writing-actions"><span class="save-note" id="sync-message" role="status">'+(s.submitted?'✓ 已成功繳交':s.dirty?'草稿保留中…':'草稿已同步')+'</span>'+
- (s.submitted?'<span class="success">✓ 已繳交</span>':'<button class="secondary save-button" onclick="saveDraft()">儲存草稿</button><button class="primary submit-button" onclick="submitWork()">完成，繳交作品 ↗</button>')+
+ (s.submitted?'<span class="success">✓ 已繳交</span><button class="secondary edit-button" onclick="reopenWork()">修改作品</button>':'<button class="secondary save-button" onclick="saveDraft()">儲存草稿</button><button class="primary submit-button" onclick="submitWork()">'+(s.revising?'更新繳交':'完成，繳交作品 ↗')+'</button>')+
  '</div>'+(s.unsentBackup?'<details class="writing-preview"><summary>查看本機未繳交的修改</summary><div class="reading">'+paragraph(getLesson(s.unsentBackup.topic||s.topic),s.unsentBackup.answers)+'</div></details>':'')+'<details class="writing-preview" id="story-preview" ontoggle="refreshParagraph()"><summary>看看我的完整段落</summary><div class="reading" id="live-story"></div></details>';
  requestAnimationFrame(()=>document.querySelectorAll('.writing-paper textarea').forEach(fitWritingField));refreshParagraph();if(s.dirty)scheduleSave();
 }
@@ -84,31 +104,36 @@ function editAnswer(i,field){
  if(s.answers[i]===field.value){fitWritingField(field);return}
  s.answers[i]=field.value;s.checks=[false,false,false,false];s.version++;s.dirty=true;
  document.querySelectorAll('.self-check input').forEach(el=>el.checked=false);document.getElementById('submit-reminder').hidden=true;
- fitWritingField(field);persistDraft(s);setSync('草稿保留中…');scheduleSave();refreshParagraph();
+ fitWritingField(field);scheduleLocalDraft(s);setSync('草稿保留中…');scheduleSave();refreshParagraph();
 }
 function finishComposing(i,field){if(session){session.composing=false;editAnswer(i,field);scheduleSave()}}
 function setComposing(value){if(session){session.composing=value;if(!value)scheduleSave()}}
 function checkWork(i,value){if(session&&!session.submitting){session.checks[i]=value;if(session.checks.every(Boolean))document.getElementById('submit-reminder').hidden=true}}
-function refreshParagraph(){const preview=document.getElementById('story-preview');if(view==='write'&&session&&preview?.open)document.getElementById('live-story').innerHTML=paragraph(getLesson(session.topic),session.answers)}
-function scheduleSave(){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false)},1800+Math.random()*350)}
+function refreshParagraph(){
+ const preview=document.getElementById('story-preview');if(view!=='write'||!session||!preview?.open||previewPending)return;
+ previewPending=true;requestAnimationFrame(()=>{previewPending=false;const current=document.getElementById('story-preview');if(view==='write'&&session&&current?.open)document.getElementById('live-story').innerHTML=paragraph(getLesson(session.topic),session.answers)});
+}
+function scheduleSave(){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false,{automatic:true})},1800+Math.random()*1000)}
 function reminder(text){const el=document.getElementById('submit-reminder');el.textContent=text;el.hidden=false;el.scrollIntoView({block:'nearest',behavior:'smooth'})}
 function setWritingLocked(value){
- document.querySelectorAll('.writing-paper textarea,.self-check input,.writing-back,.save-button,.submit-button').forEach(el=>el.disabled=value);
- const b=document.querySelector('.submit-button');if(b)b.textContent=value?'正在繳交，請稍候…':'完成，繳交作品 ↗';
+ document.querySelectorAll('.writing-paper textarea,.self-check input,.writing-back,.save-button,.submit-button,.edit-button').forEach(el=>el.disabled=value);
+ const b=document.querySelector('.submit-button');if(b)b.textContent=value?'正在繳交，請稍候…':session?.revising?'更新繳交':'完成，繳交作品 ↗';
 }
-async function saveProgress(submit=false){
- const s=session;if(!s||s.submitted)return;if(s.composing){if(submit)reminder('請先完成目前的輸入，再按繳交。');return}
+async function saveProgress(submit=false,{automatic=false}={}){
+ const s=session;if(!s||s.submitted)return;if(automatic&&(!s.dirty||s.retryAt>Date.now()||s.writer.conflict||globalThis.navigator?.onLine===false))return;if(s.composing){if(submit)reminder('請先完成目前的輸入，再按繳交。');return}
  if(submit&&!s.checks.every(Boolean)){reminder('請先完成上方四項自我檢核，全部勾選後再繳交喔。');return}
  if(submit&&s.answers.some(x=>!x.trim())){reminder('還有空格沒有完成，請填好後再重新檢查喔。');return}
  const signature=s.version+':'+submit;if(s.pending?.signature===signature)return s.pending.promise;
  const snapshot={seat:s.seat,topic:s.topic,answers:[...s.answers],checks:[...s.checks]},version=s.version;
  if(submit){s.submitting=true;clearTimeout(autosaveTimer);setWritingLocked(true)}setGlobal('');
+ persistDraft(s);
  const promise=s.writer.enqueue(snapshot,submit).then(result=>{
+  s.retryAt=0;s.failures=0;
   if(version===s.version)s.dirty=false;
   if(result.status==='submitted'){
    if(!s.submitted){const confirmed=result.submittedSnapshot||snapshot;const different=confirmed.topic!==s.topic||JSON.stringify(confirmed.answers)!==JSON.stringify(s.answers);if(different){s.unsentBackup={token,claimId:s.writer.claimId,topic:s.topic,answers:[...s.answers]};persistDraft(s);try{localStorage.setItem(namespace+'unsent:'+s.seat,JSON.stringify(s.unsentBackup))}catch{}}else{try{localStorage.removeItem(namespace+'draft:'+s.seat+':'+snapshot.topic)}catch{}}s.answers=[...confirmed.answers];s.topic=confirmed.topic;s.submitted=true;s.submitting=false;s.dirty=false;if(s===session&&view==='write'){openWriting(s.topic);if(different)setGlobal('先前的繳交已成功；較晚修改的內容仍保留在本機，下方可展開查看，請通知老師協助。')}}
   }else{persistDraft(s);if(s===session)setSync(s.dirty?'新內容保留中…':'✓ 草稿已同步')}
- }).catch(error=>{s.pending=null;if(s===session){setGlobal(error.message);setSync('尚未同步，文字保留在這台裝置。')}}).finally(()=>{
+ }).catch(error=>{s.pending=null;s.failures++;s.retryAt=Date.now()+Math.min(30000,1500*2**Math.min(s.failures,5))+Math.random()*1000;if(s===session){setGlobal(error.message);setSync('尚未同步，文字保留在這台裝置。')}}).finally(()=>{
   if(submit){s.submitting=false;if(s===session&&view==='write'&&!s.submitted)setWritingLocked(false)}
  });
  s.pending={signature,promise};return promise;
@@ -139,7 +164,7 @@ function dashboard(){
 }
 function displayWork(n){
  if(!teacherPin){teacherEntry();return}selectedTeacherSeat=n;route('display');const r=teacherRows.find(x=>x.seat===n),lesson=getLesson(r?.topic);displayedKey=teacherRowKey(r);
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(n>27?'觀課老師作品':'小小作家的作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目')+'</h1></div><button class="secondary" onclick="dashboard()">返回座號總覽</button></div><div class="display-tools"><span id="teacher-work-status">'+(r?(r.status==='submitted'?'✓ 已繳交':'✎ 尚未繳交（草稿）'):'尚未進入')+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⛶ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="displayWork('+(n-1)+')">← 上一號</button><span>'+n+' / 35</span><button class="primary" '+(n===35?'disabled':'')+' onclick="displayWork('+(n+1)+')">下一號 →</button></div>'+'<button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="releaseSeat('+n+')">解除此座號並清除作答</button>';
+ app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(n>27?'觀課老師作品':'小小作家的作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目')+'</h1></div><button class="secondary" onclick="dashboard()">返回座號總覽</button></div><div class="display-tools"><span id="teacher-work-status">'+workDetail(r)+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⛶ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="displayWork('+(n-1)+')">← 上一號</button><span>'+n+' / 35</span><button class="primary" '+(n===35?'disabled':'')+' onclick="displayWork('+(n+1)+')">下一號 →</button></div>'+'<button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="releaseSeat('+n+')">解除此座號並清除作答</button>';
  startTeacherPolling();
 }
 
@@ -149,12 +174,12 @@ function updateTeacherUI(){
   const done=teacherRows.filter(r=>r.seat<=27&&r.status==='submitted').length,writing=teacherRows.filter(r=>r.seat<=27&&r.status!=='submitted').length;
   const values={'count-submitted':done,'count-writing':writing,'count-waiting':27-done-writing,'count-observers':teacherRows.filter(r=>r.seat>27&&r.status==='submitted').length};
   for(const [id,value] of Object.entries(values)){const el=document.getElementById(id);if(el&&el.textContent!==String(value))el.textContent=String(value)}
-  document.querySelectorAll('.seat[data-seat]').forEach(button=>{const r=teacherRows.find(row=>row.seat===Number(button.dataset.seat));button.classList.toggle('submitted',r?.status==='submitted');button.classList.toggle('writing',!!r&&r.status!=='submitted');button.classList.toggle('waiting',!r);const label=button.querySelector('span');const text=r?.status==='submitted'?'已繳交':r?'寫作中':'尚未進入';if(label&&label.textContent!==text)label.textContent=text});
+  document.querySelectorAll('.seat[data-seat]').forEach(button=>{const r=teacherRows.find(row=>row.seat===Number(button.dataset.seat));button.classList.toggle('submitted',r?.status==='submitted');button.classList.toggle('writing',!!r&&r.status!=='submitted');button.classList.toggle('waiting',!r);const label=button.querySelector('span');const text=workStatus(r);if(label&&label.textContent!==text)label.textContent=text});
  }else if(view==='display'){
   const n=selectedTeacherSeat,r=teacherRows.find(row=>row.seat===n),key=teacherRowKey(r);if(key===displayedKey)return;displayedKey=key;
   const lesson=getLesson(r?.topic),title=document.getElementById('teacher-work-title'),status=document.getElementById('teacher-work-status'),paper=document.getElementById('teacher-story'),release=document.getElementById('release-seat');
   if(title)title.innerHTML='<span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目');
-  if(status)status.textContent=r?(r.status==='submitted'?'✓ 已繳交':'✎ 尚未繳交（草稿）'):'尚未進入';
+  if(status)status.textContent=workDetail(r);
   if(paper)paper.innerHTML=r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>';
   if(release)release.hidden=!r;
  }
@@ -169,10 +194,11 @@ async function refreshTeacher(){
  teacherController=new AbortController();const controller=teacherController;
  teacherPromise=(async()=>{
   try{
-   const result=await rpc(CONFIG,{action:'teacher',teacherPin},{signal:controller.signal,retries:0});
+   const result=await rpc(CONFIG,{action:'teacher',teacherPin,knownRows:teacherRows.map(r=>({seat:r.seat,claimId:r.claimId,revision:r.revision,status:r.status}))},{signal:controller.signal,retries:0});
    if(controller.signal.aborted||!['dashboard','display'].includes(view))return;
-   const fingerprint=JSON.stringify(result.rows.map(r=>[r.seat,r.claimId,r.revision,r.status]));
-   teacherRows=result.rows;
+   const merged=result.delta?new Map(teacherRows.filter(r=>result.seats.includes(r.seat)).map(r=>[r.seat,r])):new Map();for(const r of result.rows)merged.set(r.seat,r);
+   teacherRows=[...merged.values()].sort((a,b)=>a.seat-b.seat);
+   const fingerprint=JSON.stringify(teacherRows.map(r=>[r.seat,r.claimId,r.revision,r.status]));
    if(fingerprint!==teacherFingerprint){teacherFingerprint=fingerprint;updateTeacherUI()}
    const status=document.getElementById('teacher-status');if(status)status.textContent='✓ 最近同步 '+new Date().toLocaleTimeString('zh-TW',{hour12:false,timeZone:'Asia/Taipei'});
   }catch(e){if(!controller.signal.aborted){const status=document.getElementById('teacher-status');if(status)status.textContent='更新暫時失敗，保留上次成功資料。可按更新重試。'}}
@@ -186,11 +212,11 @@ async function releaseSeat(n){
 function toggleChristmas(){const value=document.body.classList.toggle('christmas');document.getElementById('theme-toggle').textContent=value?'切回原版':'試試耶誕風'}
 window.addEventListener('beforeunload',e=>{if(session?.dirty){persistDraft(session);e.preventDefault();e.returnValue=''}});
 window.addEventListener('pagehide',()=>{if(session?.dirty)persistDraft(session)});
-window.addEventListener('online',()=>{if(session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false);if(['dashboard','display'].includes(view))void refreshTeacher()});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&['dashboard','display'].includes(view))void refreshTeacher()});
-setInterval(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false)},6000);
+window.addEventListener('online',()=>{if(session)session.retryAt=0;setTimeout(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false,{automatic:true})},Math.random()*1500);if(['dashboard','display'].includes(view))void refreshTeacher()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&session?.dirty)persistDraft(session);if(!document.hidden&&['dashboard','display'].includes(view))void refreshTeacher()});
+setInterval(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false,{automatic:true})},6500+Math.random()*2500);
 
-async function downloadWorks(){try{const data=await rpc(CONFIG,{action:'teacher',teacherPin},{retries:0});const text=data.rows.map(r=>'【'+String(r.seat).padStart(2,'0')+' 號】'+getLesson(r.topic).title+'\n'+(r.status==='submitted'?'已繳交':'草稿')+'\n'+getLesson(r.topic).parts.map((p,i)=>p+(i<4?(r.answers[i]||'＿＿＿＿'):'')).join('')).join('\n\n--------------------\n\n');const link=document.createElement('a');const url=URL.createObjectURL(new Blob(['國語寫作作品備份\n下載時間：'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'\n\n'+text],{type:'text/plain;charset=utf-8'}));link.href=url;link.download='國語寫作作品_'+new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date())+'.txt';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){setGlobal(e.message)}}
-Object.assign(window,{downloadWorks,home,seats,selectSeat,chooseTopic,openWriting,editAnswer,setComposing,finishComposing,checkWork,refreshParagraph,saveDraft,submitWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,toggleChristmas});
+async function downloadWorks(){try{const data=await rpc(CONFIG,{action:'teacher',teacherPin},{retries:0});const text=data.rows.map(r=>'【'+String(r.seat).padStart(2,'0')+' 號】'+getLesson(r.topic).title+'\n'+workDetail(r)+'\n'+getLesson(r.topic).parts.map((p,i)=>p+(i<4?(r.answers[i]||'＿＿＿＿'):'')).join('')).join('\n\n--------------------\n\n');const link=document.createElement('a');const url=URL.createObjectURL(new Blob(['國語寫作作品備份\n下載時間：'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'\n\n'+text],{type:'text/plain;charset=utf-8'}));link.href=url;link.download='國語寫作作品_'+new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date())+'.txt';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){setGlobal(e.message)}}
+Object.assign(window,{downloadWorks,home,seats,selectSeat,chooseTopic,openWriting,editAnswer,setComposing,finishComposing,checkWork,refreshParagraph,saveDraft,submitWork,reopenWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,toggleChristmas});
 home();
 

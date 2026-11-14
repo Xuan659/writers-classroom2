@@ -13,7 +13,7 @@ export default {
    if(!payload||Array.isArray(payload)||typeof payload!=='object')return json({error:'資料格式不正確。'},400);
    const headers=new Headers(request.headers);headers.delete('content-length');
    headers.set('x-teacher-pin',typeof payload.teacherPin==='string'?payload.teacherPin:'');
-   if(payload.action==='teacher')return handleClassroom(new Request(request.url,{method:'GET',headers}),env);
+   if(payload.action==='teacher')return handleClassroom(new Request(request.url,{method:'GET',headers}),env,{knownRows:payload.knownRows});
    const {teacherPin,...body}=payload;
    return handleClassroom(new Request(request.url,{method:'POST',headers,body:JSON.stringify(body)}),env);
   }
