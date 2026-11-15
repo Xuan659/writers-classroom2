@@ -45,7 +45,7 @@ function seats(){
 async function selectSeat(n){
  if(joining||view!=='seats')return;
  try{validateConfig(CONFIG)}catch(e){setGlobal(e.message);return}
- joining=true;setGlobal('');document.querySelectorAll('.seat').forEach(el=>el.disabled=true);const status=document.getElementById('joining-status');status.hidden=false;status.textContent='正在確認座號，請稍候…';
+ joining=true;setGlobal('');view='joining';app.innerHTML=topicMarkup(n,true);
  try{
   const d=await rpc(CONFIG,{action:'join',seat:n,token});
   const s={seat:n,topic:d.topic,answers:d.answers.length===4?d.answers:['','','',''],checks:Array(CHECKS.length).fill(false),submitted:d.status==='submitted',revising:!!d.isRevision,submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null,retryAt:0,failures:0};
@@ -56,8 +56,8 @@ async function selectSeat(n){
   }
   if(s.submitted&&old?.token===token&&old.claimId===d.claimId&&old.answers?.length===4&&JSON.stringify(old.answers)!==JSON.stringify(s.answers))s.unsentBackup=old;
   try{const backup=JSON.parse(localStorage.getItem(namespace+'unsent:'+n)||'null');if(s.submitted&&backup?.token===token&&backup.claimId===d.claimId)s.unsentBackup=backup}catch{}
-  session=s;joining=false;if(s.submitted)openWriting(d.topic);else chooseTopic();
- }catch(e){joining=false;setGlobal(e.message);document.querySelectorAll('.seat').forEach(el=>el.disabled=false);status.hidden=true}
+  session=s;joining=false;if(s.submitted)openWriting(d.topic);else chooseTopic(true);
+ }catch(e){joining=false;seats();setGlobal(e.message)}
 }
 function makeWriter(s,row){return new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,{...body,seat:s.seat,token}),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}})}
 function workStatus(r){return !r?'尚未進入':r.status==='submitted'?'已繳交':r.isRevision?'修改中':'寫作中'}
@@ -74,15 +74,16 @@ async function reopenWork(){
  }catch(e){setGlobal(e.status?e.message:'尚未確認是否已開放修改，請保留本頁，再按一次「修改作品」重試。')}
  finally{s.submitting=false;if(s===session&&view==='write'){if(!s.submitted)setWritingLocked(false);const b=document.querySelector('.edit-button');if(b){b.disabled=false;b.textContent='修改作品'}}}
 }
-function chooseTopic(){
- if(!session||session.submitting)return;
+function topicMarkup(seat,pending=false){return '<div class="section-head"><div><span class="eyebrow">'+seat+' 號 · STEP 02</span><h1>選一個故事，開始寫作。</h1><p>選擇一個題目，完成位置、動作、對話與想法。填空字數不限。</p></div><button class="secondary" '+(pending?'disabled':'')+' onclick="seats()">← 返回座號</button></div><div id="joining-status" class="connection-status" role="status" '+(pending?'':'hidden')+'>正在確認座號，請稍候…</div><div class="topic-grid">'+LESSONS.map(l=>'<button class="topic-card" '+(pending?'disabled':'')+' onclick="openWriting('+l.id+')"><span class="eyebrow">題目 0'+l.id+'</span><h2>'+esc(l.title)+'</h2><p>'+story(l.parts[0])+'……</p><span>選擇這個故事 ↗</span></button>').join('')+'</div>';}
+function chooseTopic(reuse=false){
+ if(!session||session.submitting||joining)return;
  route('topics');if(session.submitted||session.revising){openWriting(session.topic);return}
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+session.seat+' 號 · STEP 02</span><h1>選一個故事，開始寫作。</h1><p>選擇一個題目，完成位置、動作、對話與想法。填空字數不限。</p></div><button class="secondary" onclick="seats()">← 返回座號</button></div><div class="topic-grid">'+LESSONS.map(l=>'<button class="topic-card" onclick="openWriting('+l.id+')"><span class="eyebrow">題目 0'+l.id+'</span><h2>'+esc(l.title)+'</h2><p>'+story(l.parts[0])+'……</p><span>選擇這個故事 ↗</span></button>').join('')+'</div>';
+ if(reuse){const status=document.getElementById('joining-status');if(status)status.hidden=true;document.querySelectorAll('.topic-card,.section-head .secondary').forEach(el=>el.disabled=false)}else app.innerHTML=topicMarkup(session.seat);
 }
 function displayAnswer(label,value){const text=value||'＿＿＿＿';const name=text.match(/^(小傑|小恩|小可|小娜|小琪)/);const first=name?name[0]:(Array.from(text)[0]||'');const rest=text.slice(first.length);const cls=highlight?'':'plain';return '<span class="display-answer" data-kind="'+esc(label)+'"><span class="display-answer-start"><span class="display-label" '+(highlight?'':'hidden')+'>'+esc(label)+'</span><mark class="'+cls+'">'+story(first)+'</mark></span><mark class="'+cls+'">'+story(rest)+'</mark></span>'}
 function paragraph(lesson,answers,withLabels=false){return lesson.parts.map((p,i)=>story(p)+(i<4?(withLabels?displayAnswer(lesson.labels[i],answers[i]):'<mark class="'+(highlight?'':'plain')+'">'+story(answers[i]||'＿＿＿＿')+'</mark>'):'')).join('')}
 function openWriting(topic){
- const s=session;if(!s||s.submitting)return;
+ const s=session;if(!s||s.submitting||joining)return;
  if(s.submitted||s.revising)topic=s.topic;
  if(topic!==s.topic){
   persistDraft(s);const c=cachedDraft(s.seat,topic);
@@ -164,7 +165,7 @@ function dashboard(){
 }
 function displayWork(n){
  if(!teacherPin){teacherEntry();return}selectedTeacherSeat=n;route('display');const r=teacherRows.find(x=>x.seat===n),lesson=getLesson(r?.topic);displayedKey=teacherRowKey(r);
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(n>27?'觀課老師作品':'小小作家的作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目')+'</h1></div><button class="secondary" onclick="dashboard()">返回座號總覽</button></div><div class="display-tools"><span id="teacher-work-status">'+workDetail(r)+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⛶ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="displayWork('+(n-1)+')">← 上一號</button><span>'+n+' / 35</span><button class="primary" '+(n===35?'disabled':'')+' onclick="displayWork('+(n+1)+')">下一號 →</button></div>'+'<button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="releaseSeat('+n+')">解除此座號並清除作答</button>';
+ app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(n>27?'觀課老師作品':'小作家的作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+String(n).padStart(2,'0')+' 號</span> '+(r?esc(lesson.title):'等待選擇題目')+'</h1></div><button class="secondary" onclick="dashboard()">返回座號總覽</button></div><div class="display-tools"><span id="teacher-work-status">'+workDetail(r)+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⛶ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?'<div class="reading">'+paragraph(lesson,r.answers,true)+'</div>':'<div class="empty">這位作家還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="displayWork('+(n-1)+')">← 上一號</button><span>'+n+' / 35</span><button class="primary" '+(n===35?'disabled':'')+' onclick="displayWork('+(n+1)+')">下一號 →</button></div>'+'<button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="releaseSeat('+n+')">解除此座號並清除作答</button>';
  startTeacherPolling();
 }
 

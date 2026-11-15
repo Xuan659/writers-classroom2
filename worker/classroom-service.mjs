@@ -31,8 +31,7 @@ export async function handleClassroom(request,env,{knownRows=null}={}){
   }
   if(typeof b.token!=='string'||b.token.length<20||b.token.length>100)return reply({error:'裝置識別錯誤。'},400);
   if(b.action==='join'){
-   await db.prepare("INSERT INTO submissions (seat,topic,token,answers,status,updated,claim_id,revision,last_request) VALUES (?,1,?,'[]','writing',?,?,0,'') ON CONFLICT(seat) DO NOTHING").bind(b.seat,b.token,new Date().toISOString(),crypto.randomUUID()).run();
-   const row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
+   const row=await db.prepare("INSERT INTO submissions (seat,topic,token,answers,status,updated,claim_id,revision,last_request) VALUES (?,1,?,'[]','writing',?,?,0,'') ON CONFLICT(seat) DO UPDATE SET seat=excluded.seat WHERE submissions.token=excluded.token RETURNING *").bind(b.seat,b.token,new Date().toISOString(),crypto.randomUUID()).first();
    if(!row||row.token!==b.token)return reply({error:'這個座號已被另一台裝置選用，請確認座號；換裝置請老師解除。'},409);
    return reply(publicRow(row));
   }
