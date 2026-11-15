@@ -5,7 +5,7 @@ import {ReliableWriter} from './reliable-writer.js';
 import {rpc,validateConfig} from './transport.js';
 
 const app=document.getElementById('app'),globalMessage=document.getElementById('global-message');
-const CHECKS=['確認沒有錯字','文句通順','句子和前後句連接通順','符合題目'];
+const CHECKS=["標點符號使用恰當，沒有錯字","有寫出人物所在的具體位置","有寫出人物正在做的動作","有寫出符合情境與人物心情的對話","有寫出人物心裡的想法","我的補寫與前後文連貫，讀起來通順"];
 const GUIDANCE=[['位置','人物在哪裡？和其他人或物品有什麼位置關係？'],['動作','人物做了哪些動作？能不能寫出連續的動作？'],['對話','人物會說什麼？怎麼說才能表現當下的情緒？'],['想法','人物心裡在想什麼？有什麼擔心、期待或疑問？']];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const story=s=>esc(s).replace(/小傑|小恩|小可|小娜|小琪/g,n=>'<span class="proper-name">'+n+'</span>');
@@ -48,7 +48,7 @@ async function selectSeat(n){
  joining=true;setGlobal('');document.querySelectorAll('.seat').forEach(el=>el.disabled=true);const status=document.getElementById('joining-status');status.hidden=false;status.textContent='正在確認座號，請稍候…';
  try{
   const d=await rpc(CONFIG,{action:'join',seat:n,token});
-  const s={seat:n,topic:d.topic,answers:d.answers.length===4?d.answers:['','','',''],checks:[false,false,false,false],submitted:d.status==='submitted',revising:!!d.isRevision,submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null,retryAt:0,failures:0};
+  const s={seat:n,topic:d.topic,answers:d.answers.length===4?d.answers:['','','',''],checks:Array(CHECKS.length).fill(false),submitted:d.status==='submitted',revising:!!d.isRevision,submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null,retryAt:0,failures:0};
   s.writer=makeWriter(s,d);
   const old=cachedDraft(n,d.topic);
   if(!s.submitted&&old?.token===token&&Array.isArray(old.answers)&&old.answers.length===4&&JSON.stringify(old.answers)!==JSON.stringify(s.answers)){
@@ -69,7 +69,7 @@ async function reopenWork(){
  s.reopenRequest ||= {action:'reopen',seat:s.seat,token,claimId:s.writer.claimId,revision:s.writer.revision,requestId:crypto.randomUUID()};
  try{
   const row=await rpc(CONFIG,s.reopenRequest);
-  s.writer=makeWriter(s,row);s.answers=[...row.answers];s.topic=row.topic;s.submitted=false;s.revising=true;s.checks=[false,false,false,false];s.submitting=false;s.pending=null;s.reopenRequest=null;s.version=0;s.dirty=false;s.composing=false;s.recovery=null;s.retryAt=0;s.failures=0;
+  s.writer=makeWriter(s,row);s.answers=[...row.answers];s.topic=row.topic;s.submitted=false;s.revising=true;s.checks=Array(CHECKS.length).fill(false);s.submitting=false;s.pending=null;s.reopenRequest=null;s.version=0;s.dirty=false;s.composing=false;s.recovery=null;s.retryAt=0;s.failures=0;
   persistDraft(s);openWriting(s.topic);setSync('修改中，完成後請重新檢核並更新繳交。');
  }catch(e){setGlobal(e.status?e.message:'尚未確認是否已開放修改，請保留本頁，再按一次「修改作品」重試。')}
  finally{s.submitting=false;if(s===session&&view==='write'){if(!s.submitted)setWritingLocked(false);const b=document.querySelector('.edit-button');if(b){b.disabled=false;b.textContent='修改作品'}}}
@@ -86,7 +86,7 @@ function openWriting(topic){
  if(s.submitted||s.revising)topic=s.topic;
  if(topic!==s.topic){
   persistDraft(s);const c=cachedDraft(s.seat,topic);
-  s.topic=topic;s.answers=c?.token===token&&c.claimId===s.writer.claimId&&c.answers?.length===4?c.answers:['','','',''];s.checks=[false,false,false,false];s.dirty=true;s.version++;s.recovery=null;
+  s.topic=topic;s.answers=c?.token===token&&c.claimId===s.writer.claimId&&c.answers?.length===4?c.answers:['','','',''];s.checks=Array(CHECKS.length).fill(false);s.dirty=true;s.version++;s.recovery=null;
  }
  route('write');const lesson=getLesson(s.topic);
  app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+s.seat+' 號 · '+(s.seat>27?'觀課老師體驗':'我的寫作練習')+'</span><h1>'+esc(lesson.title)+'</h1></div><button class="secondary writing-back" onclick="'+(s.submitted||s.revising?'seats()':'chooseTopic()')+'">← '+(s.submitted||s.revising?'返回座號':'返回題目選擇')+'</button></div>'+
@@ -102,7 +102,7 @@ function fitWritingField(field){if(pendingResize.has(field))return;pendingResize
 function editAnswer(i,field){
  const s=session;if(!s||s.submitted||s.submitting)return;
  if(s.answers[i]===field.value){fitWritingField(field);return}
- s.answers[i]=field.value;s.checks=[false,false,false,false];s.version++;s.dirty=true;
+ s.answers[i]=field.value;s.checks=Array(CHECKS.length).fill(false);s.version++;s.dirty=true;
  document.querySelectorAll('.self-check input').forEach(el=>el.checked=false);document.getElementById('submit-reminder').hidden=true;
  fitWritingField(field);scheduleLocalDraft(s);setSync('草稿保留中…');scheduleSave();refreshParagraph();
 }
@@ -121,7 +121,7 @@ function setWritingLocked(value){
 }
 async function saveProgress(submit=false,{automatic=false}={}){
  const s=session;if(!s||s.submitted)return;if(automatic&&(!s.dirty||s.retryAt>Date.now()||s.writer.conflict||globalThis.navigator?.onLine===false))return;if(s.composing){if(submit)reminder('請先完成目前的輸入，再按繳交。');return}
- if(submit&&!s.checks.every(Boolean)){reminder('請先完成上方四項自我檢核，全部勾選後再繳交喔。');return}
+ if(submit&&!s.checks.every(Boolean)){reminder('請先完成上方六項自我檢核，全部勾選後再繳交喔。');return}
  if(submit&&s.answers.some(x=>!x.trim())){reminder('還有空格沒有完成，請填好後再重新檢查喔。');return}
  const signature=s.version+':'+submit;if(s.pending?.signature===signature)return s.pending.promise;
  const snapshot={seat:s.seat,topic:s.topic,answers:[...s.answers],checks:[...s.checks]},version=s.version;
@@ -142,7 +142,7 @@ function saveDraft(){return saveProgress(false)}
 function submitWork(){return saveProgress(true)}
 function restoreDraft(){
  const s=session;if(!s?.recovery||!confirm('要以這台裝置保留的草稿，取代目前這一題的內容嗎？'))return;
- s.answers=s.recovery.answers;s.recovery=null;s.version++;s.dirty=true;s.checks=[false,false,false,false];persistDraft(s);openWriting(s.topic);
+ s.answers=s.recovery.answers;s.recovery=null;s.version++;s.dirty=true;s.checks=Array(CHECKS.length).fill(false);persistDraft(s);openWriting(s.topic);
 }
 function teacherEntry(){
  if(session?.submitting||joining||view==='login')return;if(teacherPin){dashboard();return}route('login');

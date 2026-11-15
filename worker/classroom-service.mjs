@@ -50,7 +50,7 @@ export async function handleClassroom(request,env,{knownRows=null}={}){
   }
   if(!['save','submit'].includes(b.action)||![1,2,3].includes(b.topic)||!Array.isArray(b.answers)||b.answers.length!==4||b.answers.some(x=>typeof x!=='string'))return reply({error:'請檢查題目與填空內容。'},400);
   if(!Number.isInteger(b.revision)||b.revision<0||typeof b.claimId!=='string'||typeof b.requestId!=='string'||b.requestId.length<20||b.requestId.length>100)return reply({error:'作答連線狀態已改變，請重新選取座號。'},409);
-  if(b.action==='submit'&&(!Array.isArray(b.checks)||b.checks.length!==4||b.checks.some(x=>x!==true)))return reply({error:'請先完成四項自我檢核。'},400);
+  if(b.action==='submit'&&(!Array.isArray(b.checks)||b.checks.length!==6||b.checks.some(x=>x!==true)))return reply({error:'請先完成六項自我檢核。'},400);
   if(b.action==='submit'&&b.answers.some(x=>!x.trim()))return reply({error:'四個空格都完成後才能繳交喔。'},400);
   let row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
   if(!own(row,b))return reply({error:'座號使用權已變更，文字仍保留在本機，請重新選取或通知老師。'},409);

@@ -17,7 +17,7 @@ form.addEventListener('submit',async event=>{
    const seat=i+1,token=crypto.randomUUID(),row=await rpc(CONFIG,{action:'join',seat,token});
    const record={seat,token,...row};claimed.push(record);
    const writer=new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,{...body,seat,token})});
-   const final={seat,topic:(seat%3)+1,answers:Array.from({length:4},(_,j)=>'連線測試 '+seat+' 號 / '+j),checks:[true,true,true,true]};
+   const final={seat,topic:(seat%3)+1,answers:Array.from({length:4},(_,j)=>'連線測試 '+seat+' 號 / '+j),checks:[true,true,true,true,true,true]};
    const one=writer.enqueue({...final,answers:['較早草稿','較早草稿','較早草稿','較早草稿']});
    const two=writer.enqueue({...final,answers:['較新草稿','較新草稿','較新草稿','較新草稿']});
    const submit=writer.enqueue(final,true);
