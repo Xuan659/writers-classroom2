@@ -167,3 +167,16 @@ button,input,textarea{font-size:max(16px,1em)}
 .display-label{position:absolute;left:0;top:-20px;display:inline-block;white-space:nowrap;border:1px solid var(--answer-border,#adc5a2);border-radius:6px;padding:4px 10px;font:500 18px/1.25 "Noto Sans TC","Microsoft JhengHei",sans-serif;letter-spacing:.03em;color:var(--answer-ink,#55734e);background:var(--badge-bg,#f4f8ef);z-index:1}
 .display-label[hidden]{display:none!important}
 @media(max-width:650px){.display-label{font-size:16px;padding:3px 9px;top:-17px}}
+
+/* Seven classroom groups */
+.group-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:28px 0 34px}.group-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;min-height:112px;background:#fffdf7}.group-card strong{font-size:26px}.group-card span{font-size:14px;color:#788477}@media(max-width:800px){.group-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:520px){.group-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.group-card strong{font-size:23px}}
+
+/* Two-stage classroom: compact stage choices and read-only context. */
+.stage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin:28px 0 34px}.writing-paper .blank.locked-blank textarea:disabled{opacity:1;background:transparent;color:#52634c;cursor:default}@media(max-width:650px){.stage-grid{grid-template-columns:1fr;gap:16px}}
+
+/* Compact pale input hints, with no character limit or fixed result height. */
+.writing-paper .blank[data-kind="位置"] textarea:not(:disabled){background:#f4f8ef;border-bottom-color:#adc5a2;border-radius:3px}
+.writing-paper .blank[data-kind="動作"] textarea:not(:disabled){background:#fff9ec;border-bottom-color:#d7be8c;border-radius:3px}
+.writing-paper .blank[data-kind="對話"] textarea:not(:disabled){background:#f2f6fc;border-bottom-color:#aebfd6;border-radius:3px}
+.writing-paper .blank[data-kind="想法"] textarea:not(:disabled){background:#faf3fb;border-bottom-color:#cbb3d1;border-radius:3px}
+.display-paper .reading.story-auto{font-size:clamp(24px,2.7vw,var(--story-size,40px));height:auto;max-height:none;overflow:visible;overflow-wrap:anywhere;white-space:pre-wrap}

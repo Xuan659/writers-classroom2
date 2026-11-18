@@ -1,7 +1,8 @@
 import {databaseFailure} from './diagnostics.mjs';
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const publicRow=r=>{let answers=JSON.parse(r.answers);if(Array.isArray(answers)&&answers.length===0)answers=['','','',''];if(!Array.isArray(answers)||answers.length!==4||answers.some(x=>typeof x!=='string'))throw Object.assign(new Error('Invalid stored answers'),{code:'DB_CONTENT_INVALID'});return{seat:r.seat,topic:r.topic,answers,status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id,isRevision:r.claim_id.startsWith('edit:')}};
-const own=(r,b)=>r&&r.token===b.token&&r.claim_id===b.claimId;
+const deviceAllowed=(r,b)=>r&&(r.token===b.token||(r.seat>=28&&r.seat<=35));
+const own=(r,b)=>deviceAllowed(r,b)&&r.claim_id===b.claimId;
 export async function handleClassroom(request,env,{knownRows=null}={}){
  try{
   const db=env.DB;
@@ -31,20 +32,20 @@ export async function handleClassroom(request,env,{knownRows=null}={}){
   }
   if(typeof b.token!=='string'||b.token.length<20||b.token.length>100)return reply({error:'裝置識別錯誤。'},400);
   if(b.action==='join'){
-   const row=await db.prepare("INSERT INTO submissions (seat,topic,token,answers,status,updated,claim_id,revision,last_request) VALUES (?,1,?,'[]','writing',?,?,0,'') ON CONFLICT(seat) DO UPDATE SET seat=excluded.seat WHERE submissions.token=excluded.token RETURNING *").bind(b.seat,b.token,new Date().toISOString(),crypto.randomUUID()).first();
-   if(!row||row.token!==b.token)return reply({error:'這個座號已被另一台裝置選用，請確認座號；換裝置請老師解除。'},409);
+   const row=await db.prepare("INSERT INTO submissions (seat,topic,token,answers,status,updated,claim_id,revision,last_request) VALUES (?,1,?,'[]','writing',?,?,0,'') ON CONFLICT(seat) DO UPDATE SET seat=excluded.seat WHERE submissions.token=excluded.token OR submissions.seat BETWEEN 28 AND 35 RETURNING *").bind(b.seat,b.token,new Date().toISOString(),crypto.randomUUID()).first();
+   if(!deviceAllowed(row,b))return reply({error:'這個座號已被另一台裝置選用，請確認座號；換裝置請老師解除。'},409);
    return reply(publicRow(row));
   }
   if(b.action==='reopen'){
    if(!Number.isInteger(b.revision)||b.revision<0||typeof b.claimId!=='string'||typeof b.requestId!=='string'||b.requestId.length<20||b.requestId.length>100)return reply({error:'作品狀態已改變，請重新選取座號。'},409);
    let row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
    // The new claim fences saves/submits from the previous editing session.
-   if(row?.status==='writing'&&row.token===b.token&&row.last_request===b.requestId&&row.claim_id.startsWith('edit:'))return reply(publicRow(row));
+   if(row?.status==='writing'&&deviceAllowed(row,b)&&row.last_request===b.requestId&&row.claim_id.startsWith('edit:'))return reply(publicRow(row));
    if(!own(row,b))return reply({error:'座號使用權或作品版本已改變，請重新選取座號。'},409);
-   const reopened=await db.prepare("UPDATE submissions SET status='writing',claim_id=?,revision=revision+1,last_request=?,updated=? WHERE seat=? AND token=? AND claim_id=? AND revision=? AND status='submitted' RETURNING *").bind('edit:'+crypto.randomUUID(),b.requestId,new Date().toISOString(),b.seat,b.token,b.claimId,b.revision).first();
+   const reopened=await db.prepare("UPDATE submissions SET status='writing',claim_id=?,revision=revision+1,last_request=?,updated=? WHERE seat=? AND (token=? OR seat BETWEEN 28 AND 35) AND claim_id=? AND revision=? AND status='submitted' RETURNING *").bind('edit:'+crypto.randomUUID(),b.requestId,new Date().toISOString(),b.seat,b.token,b.claimId,b.revision).first();
    if(reopened)return reply(publicRow(reopened));
    row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
-   if(row?.status==='writing'&&row.token===b.token&&row.last_request===b.requestId&&row.claim_id.startsWith('edit:'))return reply(publicRow(row));
+   if(row?.status==='writing'&&deviceAllowed(row,b)&&row.last_request===b.requestId&&row.claim_id.startsWith('edit:'))return reply(publicRow(row));
    return reply({error:'作品已由另一個分頁更新，請重新選取座號後再修改。'},409);
   }
   if(!['save','submit'].includes(b.action)||![1,2,3].includes(b.topic)||!Array.isArray(b.answers)||b.answers.length!==4||b.answers.some(x=>typeof x!=='string'))return reply({error:'請檢查題目與填空內容。'},400);
@@ -57,11 +58,11 @@ export async function handleClassroom(request,env,{knownRows=null}={}){
   if(row.last_request===b.requestId)return reply({ok:true,status:row.status,revision:row.revision});
   if(row.status==='submitted')return reply({error:'此作品已繳交，舊草稿不會覆蓋它。'},409);
   const status=b.action==='submit'?'submitted':'writing';
-  const updated=await db.prepare("UPDATE submissions SET topic=?,answers=?,status=?,updated=?,revision=revision+1,last_request=? WHERE seat=? AND token=? AND claim_id=? AND revision=? AND status='writing' RETURNING revision,status").bind(b.topic,JSON.stringify(b.answers),status,new Date().toISOString(),b.requestId,b.seat,b.token,b.claimId,b.revision).first();
+  const updated=await db.prepare("UPDATE submissions SET topic=?,answers=?,status=?,updated=?,revision=revision+1,last_request=? WHERE seat=? AND (token=? OR seat BETWEEN 28 AND 35) AND claim_id=? AND revision=? AND status='writing' RETURNING revision,status").bind(b.topic,JSON.stringify(b.answers),status,new Date().toISOString(),b.requestId,b.seat,b.token,b.claimId,b.revision).first();
   if(updated)return reply({ok:true,...updated});
   row=await db.prepare('SELECT * FROM submissions WHERE seat=?').bind(b.seat).first();
   if(own(row,b)&&row.last_request===b.requestId)return reply({ok:true,status:row.status,revision:row.revision});
-  return reply({error:'作品已由另一個頁面更新，已阻止舊內容覆蓋。請保留本機草稿並重新選取座號。'},409);
+  return reply({error:b.seat>=28?'這個觀課號碼剛由其他老師更新，已保留本機草稿並阻止覆蓋。請重新選號載入最新版本，或改用其他觀課號碼。':'作品已由另一個分頁更新，已保留本機草稿並阻止覆蓋。請重新選取自己的座號載入最新版本。'},409);
  }catch(error){const detail=databaseFailure(error);return reply(detail,detail.status)}
 }
 

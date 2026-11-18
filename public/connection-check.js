@@ -1,41 +1,23 @@
-import {CONFIG} from './config.js?v=20261118-display-01';
-import {rpc} from './transport.js?v=20261118-display-01';
-import {ReliableWriter} from './reliable-writer.js?v=20261118-display-01';
+import {CONFIG} from './config.js?v=20261118-two-stage-04';
+import {rpc} from './transport.js?v=20261118-two-stage-04';
 const form=document.getElementById('test-form'),log=document.getElementById('test-log'),button=document.getElementById('run-test');
-function line(text){const p=document.createElement('p');p.textContent=text;log.appendChild(p)}
+const line=text=>{const p=document.createElement('p');p.textContent=text;log.appendChild(p)};
 form.addEventListener('submit',async event=>{
  event.preventDefault();if(button.disabled)return;button.disabled=true;log.textContent='';
  const teacherPin=document.getElementById('test-pin').value;
- const claimed=[];let success=false;
  try{
-  if(!document.getElementById('test-confirm').checked)throw new Error('請先勾選確認：目前沒有學生使用網站。');
-  line('檢查教師密碼、連線與教室是否空白…');
-  const before=await rpc(CONFIG,{action:'teacher',teacherPin},{retries:0});
-  if(before.rows.length)throw new Error('教室已有作答，已停止。測試不會清除原有作品。');
-  line('建立 35 個測試作答身分…');
-  await Promise.allSettled(Array.from({length:35},async(_,i)=>{
-   const seat=i+1,token=crypto.randomUUID(),row=await rpc(CONFIG,{action:'join',seat,token});
-   const record={seat,token,...row};claimed.push(record);
-   const writer=new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,{...body,seat,token})});
-   const final={seat,topic:(seat%3)+1,answers:Array.from({length:4},(_,j)=>'連線測試 '+seat+' 號 / '+j),checks:[true,true,true,true,true,true]};
-   const one=writer.enqueue({...final,answers:['較早草稿','較早草稿','較早草稿','較早草稿']});
-   const two=writer.enqueue({...final,answers:['較新草稿','較新草稿','較新草稿','較新草稿']});
-   const submit=writer.enqueue(final,true);
-   await Promise.all([one,two,submit]);record.done=true;
+  const health=await rpc(CONFIG,{flow:'two-stage',action:'health'},{retries:0,timeoutMs:6000});
+  if(health.workflow!=='two-stage-v1')throw new Error('伺服器版本尚未更新。');
+  const before=await rpc(CONFIG,{flow:'two-stage',action:'teacher',teacherPin},{retries:0});
+  line('兩階段儲存與教師讀取正常：'+before.groups.length+' 組、'+before.rows.length+' 份作答紀錄。');
+  const started=performance.now();let completed=0;
+  const results=await Promise.allSettled(Array.from({length:35},async()=>{
+   const r=await rpc(CONFIG,{flow:'two-stage',action:'health'},{retries:0,timeoutMs:8000});
+   if(r.workflow!=='two-stage-v1')throw new Error('版本不一致');completed++;
   }));
-  if(claimed.length!==35||claimed.some(r=>!r.done))throw new Error('至少一個身分未完成同步；請查看網路與資料庫設定。');
-  line('讀取教師資料，核對 35 份最終答案與座號…');
-  const after=await rpc(CONFIG,{action:'teacher',teacherPin},{retries:0});
-  for(const own of claimed){
-   const row=after.rows.find(r=>r.seat===own.seat&&r.claimId===own.claimId);
-   if(!row||row.status!=='submitted'||row.answers.some((v,j)=>v!=='連線測試 '+own.seat+' 號 / '+j))throw new Error('作品核對失敗：'+own.seat+' 號。');
-  }
-  success=true;line('通過：35 個身分的選號、草稿、排隊繳交及教師讀取核對。');
- }catch(e){line('未通過：'+e.message)}
- finally{
-  if(claimed.length){line('清理本次建立的測試資料（不會清除其他使用識別的作品）…');const failed=[];for(let i=0;i<claimed.length;i+=5){await Promise.all(claimed.slice(i,i+5).map(async r=>{try{await rpc(CONFIG,{action:'release',seat:r.seat,claimId:r.claimId,teacherPin})}catch{failed.push(r.seat)}}))}if(failed.length){line('這些測試座號尚未清理，請到教師控制台確認：'+failed.join('、'));success=false}else line('測試資料已清理。')}
-  line(success?'線上邏輯檢查完成。這不是 35 台實體平板實測；仍請在學校 Wi-Fi 進行多人演練。':'請先修正設定或網路問題，再重試。');
-  document.getElementById('test-pin').value='';button.disabled=false;
- }
+  const errors=results.filter(r=>r.status==='rejected');line('35 個同時唯讀請求：'+completed+' 個成功，耗時約 '+((performance.now()-started)/1000).toFixed(1)+' 秒。');
+  if(errors.length)throw new Error('有 '+errors.length+' 個連線未完成，請檢查網路後重試。');
+  line('唯讀連線檢查完成，沒有建立、修改或清除作答紀錄。');
+ }catch(e){line('檢查未完成：'+e.message)}
+ finally{line('這不是 35 台實體平板的寫入測試，仍需在學校 Wi-Fi 彩排。');document.getElementById('test-pin').value='';button.disabled=false}
 });
-

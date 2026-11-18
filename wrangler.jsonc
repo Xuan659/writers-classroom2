@@ -1,5 +1,5 @@
 {
-  "name": "little-writers-classroom",
+  "name": "writers-classroom2",
   "main": "worker/index.js",
   "compatibility_date": "2026-11-14",
   "workers_dev": true,
