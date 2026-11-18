@@ -180,3 +180,13 @@ button,input,textarea{font-size:max(16px,1em)}
 .writing-paper .blank[data-kind="對話"] textarea:not(:disabled){background:#f2f6fc;border-bottom-color:#aebfd6;border-radius:3px}
 .writing-paper .blank[data-kind="想法"] textarea:not(:disabled){background:#faf3fb;border-bottom-color:#cbb3d1;border-radius:3px}
 .display-paper .reading.story-auto{font-size:clamp(24px,2.7vw,var(--story-size,40px));height:auto;max-height:none;overflow:visible;overflow-wrap:anywhere;white-space:pre-wrap}
+
+/* Tablet writing and full-width presentation, including student result labels. */
+.writing-paper,.display-paper{min-width:0;max-width:100%;box-sizing:border-box}
+.writing-paper .blank textarea{max-width:100%;box-sizing:border-box;line-height:1.7;touch-action:manipulation}
+.display-paper .reading{line-height:2.35;word-break:normal;overflow-wrap:anywhere}
+.display-label{pointer-events:none}
+.actions,.display-tools{flex-wrap:wrap}
+.advance-button{white-space:normal}
+@media(min-width:651px) and (max-width:1100px){.writing-paper{padding:32px 28px}.display-paper{padding:38px 30px}.section-head{gap:20px}.section-head h1{font-size:clamp(27px,3.6vw,38px)}}
+@media(max-width:650px){.writing-paper,.display-paper{padding:26px 18px}.reading.story-auto{font-size:24px}.writing-actions{gap:12px}.writing-actions .save-note{flex-basis:100%}.actions .primary,.actions .secondary{max-width:100%}.display-label{top:-18px}}

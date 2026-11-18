@@ -7,14 +7,14 @@ export const WORKFLOW_VERSION='two-stage-v1';
 export const SCHEMA="CREATE TABLE IF NOT EXISTS writing_two_stage (work_key TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('group','individual','observer')),target INTEGER NOT NULL,group_id INTEGER NOT NULL,token TEXT NOT NULL,answers TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('writing','submitted')),claim_id TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,last_request TEXT NOT NULL DEFAULT '',updated TEXT NOT NULL,parent_claim TEXT NOT NULL DEFAULT '',parent_revision INTEGER NOT NULL DEFAULT 0)";
 async function setup(db){let p=setups.get(db);if(!p){p=db.prepare(SCHEMA).run();setups.set(db,p);p.catch(()=>setups.delete(db))}await p}
 const answersOf=r=>{const a=JSON.parse(r.answers);if(!Array.isArray(a)||a.length!==4||a.some(v=>typeof v!=='string'))throw new Error('Invalid two-stage answers');return a};
-const rowOf=r=>({key:r.work_key,stage:r.kind,id:r.target,seat:r.kind==='group'?null:r.target,groupId:r.group_id,topic:3,answers:answersOf(r),status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id,isRevision:r.claim_id.startsWith('edit:'),groupRevision:r.parent_revision});
+const rowOf=r=>({workflow:WORKFLOW_VERSION,key:r.work_key,stage:r.kind==='observer'&&r.group_id===-1?'observer-group':r.kind,id:r.target,seat:r.kind==='group'?null:r.target,groupId:r.group_id,topic:3,answers:answersOf(r),status:r.status,updated:r.updated,revision:r.revision,claimId:r.claim_id,isRevision:r.claim_id.startsWith('edit:'),groupRevision:r.parent_revision});
 const allowed=(r,b)=>r&&(r.kind!=='individual'||r.token===b.token);
 const owns=(r,b)=>allowed(r,b)&&r.claim_id===b.claimId;
 function targetOf(b){
  const stage=b.stage;
  if(stage==='group'&&Number.isInteger(b.groupId)&&b.groupId>=1&&b.groupId<=7)return{key:'g:'+b.groupId,stage,id:b.groupId,groupId:b.groupId};
  if(stage==='individual'&&Number.isInteger(b.seat)&&b.seat>=1&&b.seat<=27){const groupId=GROUPS.findIndex(g=>g.includes(b.seat))+1;if(b.groupId!==groupId)return null;return{key:'s:'+b.seat,stage,id:b.seat,groupId}}
- if(stage==='observer'&&Number.isInteger(b.seat)&&b.seat>=28&&b.seat<=35)return{key:'o:'+b.seat,stage,id:b.seat,groupId:0};
+ if(['observer','observer-group'].includes(stage)&&Number.isInteger(b.seat)&&b.seat>=28&&b.seat<=40)return{key:'o:'+b.seat,stage,id:b.seat,groupId:stage==='observer-group'?-1:0};
  return null;
 }
 export async function handleTwoStage(b,env){
@@ -26,7 +26,7 @@ export async function handleTwoStage(b,env){
   if(b.action==='teacher'){
    if(!teacher)return reply({error:'教師密碼不正確。'},401);
    let records,delta=false,keys;
-   if(Array.isArray(b.knownRecords)&&b.knownRecords.length<=42&&b.knownRecords.every(r=>r&&typeof r.key==='string'&&Number.isInteger(r.revision)&&typeof r.claimId==='string')){
+   if(Array.isArray(b.knownRecords)&&b.knownRecords.length<=47&&b.knownRecords.every(r=>r&&typeof r.key==='string'&&Number.isInteger(r.revision)&&typeof r.claimId==='string')){
     delta=true;const known=new Map(b.knownRecords.map(r=>[r.key,r]));
     const meta=(await db.prepare('SELECT work_key,revision,claim_id,status FROM writing_two_stage ORDER BY work_key').all()).results;keys=meta.map(r=>r.work_key);
     const changed=meta.filter(r=>{const old=known.get(r.work_key);return !old||old.claimId!==r.claim_id||old.revision!==r.revision||old.status!==r.status}).map(r=>r.work_key);
@@ -50,20 +50,32 @@ export async function handleTwoStage(b,env){
    let r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
    if(!r){
     let a=['','','',''],parentClaim='',parentRevision=0;
+    if(t.stage==='observer')return reply({error:'請先完成觀課體驗的第一階段，再接著填寫下半段。',code:'OBSERVER_FIRST_REQUIRED',retryable:false},423);
     if(t.stage==='individual'){
      const parent=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind('g:'+t.groupId).first();
      if(!parent||parent.status!=='submitted')return reply({error:'請先完成並繳交本組第一階段的小組共作，再進入個人寫作。',code:'GROUP_NOT_READY',retryable:false},423);
      const p=answersOf(parent);a=[p[0],p[1],'',''];parentClaim=parent.claim_id;parentRevision=parent.revision;
     }
-    await db.prepare("INSERT INTO writing_two_stage(work_key,kind,target,group_id,token,answers,status,claim_id,revision,last_request,updated,parent_claim,parent_revision) VALUES(?,?,?,?,?,?,'writing',?,0,'',?,?,?) ON CONFLICT(work_key) DO NOTHING").bind(t.key,t.stage,t.id,t.groupId,b.token,JSON.stringify(a),crypto.randomUUID(),new Date().toISOString(),parentClaim,parentRevision).run();
+    await db.prepare("INSERT INTO writing_two_stage(work_key,kind,target,group_id,token,answers,status,claim_id,revision,last_request,updated,parent_claim,parent_revision) VALUES(?,?,?,?,?,?,'writing',?,0,'',?,?,?) ON CONFLICT(work_key) DO NOTHING").bind(t.key,t.stage==='observer-group'?'observer':t.stage,t.id,t.groupId,b.token,JSON.stringify(a),crypto.randomUUID(),new Date().toISOString(),parentClaim,parentRevision).run();
     r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
    }
    if(!allowed(r,b))return reply({error:t.stage==='group'?'本組已由另一台平板開始共作，請使用原本的小組平板；需要更換時請通知老師。':'這個座號已由另一台平板開始個人寫作，請確認座號或通知老師。',code:'DEVICE_CONFLICT'},409);
    return reply(rowOf(r));
   }
-  if(!['save','submit','reopen'].includes(b.action))return reply({error:'找不到這個操作，請重新載入最新網站。'},400);
+  if(!['save','submit','reopen','advance'].includes(b.action))return reply({error:'找不到這個操作，請重新載入最新網站。'},400);
   if(typeof b.claimId!=='string'||!Number.isInteger(b.revision)||b.revision<0||typeof b.requestId!=='string'||b.requestId.length<20||b.requestId.length>100)return reply({error:'作品狀態已改變，請重新選取。'},409);
   let r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
+  if(b.action==='advance'){
+   if(!r||r.kind!=='observer')return reply({error:'此操作僅供觀課教師進入第二階段。'},400);
+   if(r.group_id===0&&r.last_request===b.requestId)return reply(rowOf(r));
+   if(!owns(r,b)||r.group_id!==-1||r.status!=='submitted'||r.revision!==b.revision)return reply({error:'第一階段尚未完成，或作品狀態已更新，請重新進入。'},409);
+   const changed=await db.prepare("UPDATE writing_two_stage SET group_id=0,status='writing',claim_id=?,revision=revision+1,last_request=?,updated=? WHERE work_key=? AND claim_id=? AND revision=? AND status='submitted' AND group_id=-1 RETURNING *").bind('phase2:'+crypto.randomUUID(),b.requestId,new Date().toISOString(),t.key,b.claimId,b.revision).first();
+   if(changed)return reply(rowOf(changed));
+   r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
+   if(r?.group_id===0&&r.last_request===b.requestId)return reply(rowOf(r));
+   return reply({error:'作品已由另一個頁面進入第二階段，請重新進入。'},409);
+  }
+  if(r?.kind==='observer'&&rowOf(r).stage!==b.stage)return reply({error:'觀課作品的階段已更新，請返回並重新進入；此頁文字仍保留在本機。'},409);
   if(b.action==='reopen'&&allowed(r,b)&&r.last_request===b.requestId&&r.status==='writing'&&r.claim_id.startsWith('edit:'))return reply(rowOf(r));
   if(!owns(r,b))return reply({error:'作品使用狀態已改變，文字已保留在本機，請重新進入或通知老師。'},409);
   if(b.action==='reopen'){
@@ -74,9 +86,9 @@ export async function handleTwoStage(b,env){
    return reply({error:'作品已由另一個頁面更新，請重新進入。'},409);
   }
   if(!Array.isArray(b.answers)||b.answers.length!==4||b.answers.some(v=>typeof v!=='string'))return reply({error:'作答格式不正確，請重新載入後再試。'},400);
-  const current=answersOf(r),a=t.stage==='group'?[b.answers[0],b.answers[1],'','']:t.stage==='individual'?[current[0],current[1],b.answers[2],b.answers[3]]:[...b.answers];
-  const editable=t.stage==='group'?[0,1]:t.stage==='individual'?[2,3]:[0,1,2,3];
-  const required=t.stage==='group'?4:6;
+  const current=answersOf(r),upper=t.stage==='group'||t.stage==='observer-group',lower=t.stage==='individual'||t.stage==='observer',a=upper?[b.answers[0],b.answers[1],'','']:lower?[current[0],current[1],b.answers[2],b.answers[3]]:[...b.answers];
+  const editable=upper?[0,1]:[2,3];
+  const required=upper?4:6;
   if(b.action==='submit'&&(!Array.isArray(b.checks)||b.checks.length!==required||b.checks.some(v=>v!==true)))return reply({error:'請先完成本階段全部自我檢核。'},400);
   if(b.action==='submit'&&editable.some(i=>!a[i].trim()))return reply({error:'請先填完本階段開放的欄位。'},400);
   if(r.last_request===b.requestId)return reply({ok:true,status:r.status,revision:r.revision});

@@ -40,10 +40,12 @@ function seatList(numbers,teacher=false){
  return '<button class="seat '+(teacher?(r?.status||'waiting'):'')+'" data-seat="'+n+'" '+(!teacher&&joining?'disabled':'')+' onclick="'+(teacher?'displayWork':'selectSeat')+'('+n+')"><strong>'+String(n).padStart(2,'0')+'</strong><span>'+(teacher?(workStatus(r)):n>27?'老師試填':'號')+'</span></button>';
  }).join('')+'</div>';
 }
-function observerSeats(){return '<h3>觀課老師體驗區 <small>28–35 · 直接試寫完整短文</small></h3>'+seatGrid(28,35)}
-function stageName(s){return s?.stage==='group'?'第一階段・小組共作':s?.stage==='individual'?'第二階段・個人寫作':'觀課老師試寫'}
-function checkItems(s){return s?.stage==='group'?[CHECKS[0],CHECKS[1],CHECKS[2],CHECKS[5]]:CHECKS}
-function editableFields(s){return s?.stage==='group'?[0,1]:s?.stage==='individual'?[2,3]:[0,1,2,3]}
+function observerSeats(){return '<h3>觀課老師體驗區 <small>28–40 · 直接試寫完整短文</small></h3>'+seatGrid(28,40)}
+function isUpper(s){return s?.stage==='group'||s?.stage==='observer-group'}
+function isObserver(s){return s?.stage==='observer'||s?.stage==='observer-group'}
+function stageName(s){return s?.stage==='group'?'第一階段・小組共作':s?.stage==='individual'?'第二階段・個人寫作':s?.stage==='observer-group'?'觀課體驗・第一階段':'觀課體驗・第二階段'}
+function checkItems(s){return isUpper(s)?[CHECKS[0],CHECKS[1],CHECKS[2],CHECKS[5]]:CHECKS}
+function editableFields(s){return isUpper(s)?[0,1]:[2,3]}
 function draftKey(s){return namespace+'two-stage:draft:'+s.stage+':'+s.seat}
 function unsentKey(s){return namespace+'two-stage:unsent:'+s.stage+':'+s.seat}
 function flowPayload(s,payload){return {...payload,flow:'two-stage',stage:s.stage,groupId:s.groupId,seat:s.stage==='group'?undefined:s.seat}}
@@ -80,7 +82,7 @@ function seats(){
 }
 function selectSeat(n){
  if(joining||session?.submitting||!Number.isInteger(n))return;
- if(n>=28&&n<=35&&view==='stages')return joinTarget({stage:'observer',seat:n,groupId:0});
+ if(n>=28&&n<=40&&view==='stages')return joinTarget({stage:'observer-group',seat:n,groupId:-1});
  if(view==='seats'&&stageMode==='individual'&&GROUPS.find(g=>g.id===selectedGroup)?.seats.includes(n))return joinTarget({stage:'individual',seat:n,groupId:selectedGroup});
 }
 function showJoin(error=''){
@@ -94,10 +96,12 @@ async function joinTarget(target){
  const slow=setTimeout(()=>{if(attempt===joinAttempt&&joining){const el=document.querySelector('.connection-status');if(el)el.textContent='連線確認較慢，仍在處理中；你可以取消並返回。'}},4000);
  const deadline=setTimeout(()=>controller.abort(),25000);
  try{
-  await ensureFlow(controller.signal);
+  if(isLocalFile())await ensureFlow(controller.signal);
   const d=await rpc(CONFIG,{flow:'two-stage',action:'join',...target,token},{signal:controller.signal,retries:0,timeoutMs:12000});
   if(attempt!==joinAttempt||controller.signal.aborted)return;
-  if(d.stage!==target.stage||d.groupId!==target.groupId||(target.stage!=='group'&&d.seat!==target.seat)||!['writing','submitted'].includes(d.status)||!Array.isArray(d.answers)||d.answers.length!==4||!Number.isInteger(d.revision)||typeof d.claimId!=='string')throw new Error('作品確認資料不完整，請重試；若仍無法進入，請通知老師檢查本次部署。');
+  if(d.workflow!=='two-stage-v1')throw new Error('正式網站前後端版本尚未一致，請通知老師確認最新部署。');
+  flowReady=true;
+  if((isObserver(target)?!isObserver(d):d.stage!==target.stage||d.groupId!==target.groupId)||(target.stage!=='group'&&d.seat!==target.seat)||!['writing','submitted'].includes(d.status)||!Array.isArray(d.answers)||d.answers.length!==4||!Number.isInteger(d.revision)||typeof d.claimId!=='string')throw new Error('作品確認資料不完整，請重試；若仍無法進入，請通知老師檢查本次部署。');
   const s={stage:d.stage,seat:d.stage==='group'?d.groupId:d.seat,groupId:d.groupId,key:d.key,topic:3,answers:[...d.answers],checks:Array(checkItems(d).length).fill(false),submitted:d.status==='submitted',revising:!!d.isRevision,submitting:false,dirty:false,version:0,composing:false,pending:null,recovery:null,unsentBackup:null,retryAt:0,failures:0};
   s.writer=makeWriter(s,d);
   try{
@@ -121,12 +125,12 @@ function retryJoin(){if(lastJoinTarget)return joinTarget(lastJoinTarget)}
 function cancelJoin(destination='selection'){
  const t=lastJoinTarget;++joinAttempt;joinController?.abort();joinController=null;joining=false;
  if(destination==='home'){home();return}
- if(!t||t.stage==='observer'){stages();return}
+ if(!t||isObserver(t)){stages();return}
  stageMode=t.stage;selectedGroup=t.groupId;
  if(t.stage==='individual')seats();else groups();
 }
-function makeWriter(s,row){return new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,flowPayload(s,{...body,token})),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}})}
-function workStatus(r){return !r?'尚未進入':r.status==='submitted'?'已繳交':r.isRevision?'修改中':'寫作中'}
+function makeWriter(s,row){return new ReliableWriter({claimId:row.claimId,revision:row.revision,send:body=>rpc(CONFIG,flowPayload(s,{...body,token}),{timeoutMs:12000}),onState:state=>{if(s!==session)return;if(state==='saving')setSync('正在同步草稿…');if(state==='submitting')setSync('正在繳交，請稍候…');if(state==='offline')setSync('尚未同步，文字保留在這台裝置。')}})}
+function workStatus(r){const text=!r?'尚未進入':r.status==='submitted'?'已繳交':r.isRevision?'修改中':'寫作中';return r&&isObserver(r)?(isUpper(r)?'第一階段・':'第二階段・')+text:text}
 function workDetail(r){return !r?'尚未進入':r.status==='submitted'?'✓ 已繳交':r.isRevision?'✎ 修改中（草稿）':'✎ 尚未繳交（草稿）'}
 async function reopenWork(){
  const s=session;if(!s?.submitted||s.submitting||view!=='write')return;
@@ -140,26 +144,35 @@ async function reopenWork(){
  }catch(e){setGlobal(e.status?e.message:'尚未確認是否已開放修改，請保留本頁，再按一次「修改作品」重試。')}
  finally{s.submitting=false;if(s===session&&view==='write'){if(!s.submitted)setWritingLocked(false);const b=document.querySelector('.edit-button');if(b){b.disabled=false;b.textContent='修改作品'}}}
 }
+async function advanceObserver(){
+ const s=session;if(!s||s.stage!=='observer-group'||!s.submitted||s.submitting||view!=='write')return;
+ s.submitting=true;setWritingLocked(true);const button=document.querySelector('.advance-button');if(button){button.disabled=true;button.textContent='正在匯入前文…'}
+ s.advanceRequest||={action:'advance',token,claimId:s.writer.claimId,revision:s.writer.revision,requestId:crypto.randomUUID()};
+ try{const r=await rpc(CONFIG,flowPayload(s,s.advanceRequest));s.stage=r.stage;s.groupId=r.groupId;s.answers=[...r.answers];s.writer=makeWriter(s,r);s.submitted=false;s.submitting=false;s.revising=false;s.checks=Array(6).fill(false);s.pending=null;s.advanceRequest=null;s.version=0;s.dirty=false;s.recovery=null;s.unsentBackup=null;s.retryAt=0;s.failures=0;persistDraft(s);openWriting();}
+ catch(e){setGlobal(e.status?e.message:'尚未確認第二階段是否已開啟，請保留本頁再試一次。')}
+ finally{s.submitting=false;if(button&&s.stage==='observer-group'){button.disabled=false;button.textContent='匯入前文，進入第二階段 ↗'}}
+}
 function answerMark(label,text,plain=false){return '<mark class="answer-highlight'+(plain?' plain':'')+'" data-kind="'+esc(label)+'">'+story(text)+'</mark>'}
-function displayAnswer(label,value){const text=value||'＿＿＿＿';const name=text.match(/^(小傑|小恩|小可|小娜|小琪)/);const first=name?name[0]:(Array.from(text)[0]||'');const rest=text.slice(first.length);return '<span class="display-answer" data-kind="'+esc(label)+'"><span class="display-answer-start"><span class="display-label" '+(highlight?'':'hidden')+'>'+esc(label)+'</span>'+answerMark(label,first,!highlight)+'</span>'+answerMark(label,rest,!highlight)+'</span>'}
-function paragraph(lesson,answers,withLabels=false){return lesson.parts.map((p,i)=>story(p)+(i<4?(withLabels?displayAnswer(lesson.labels[i],answers[i]):answerMark(lesson.labels[i],answers[i]||'＿＿＿＿')):'')).join('')}
-function storyBlock(lesson,answers,withLabels=false){
+function displayAnswer(label,value,show=highlight){const text=value||'＿＿＿＿';const name=text.match(/^(小傑|小恩|小可|小娜|小琪)/);const first=name?name[0]:(Array.from(text)[0]||'');const rest=text.slice(first.length);return '<span class="display-answer" data-kind="'+esc(label)+'"><span class="display-answer-start"><span class="display-label" '+(show?'':'hidden')+'>'+esc(label)+'</span>'+answerMark(label,first,!show)+'</span>'+answerMark(label,rest,!show)+'</span>'}
+function paragraph(lesson,answers,withLabels=false,show=highlight){return lesson.parts.map((p,i)=>story(p)+(i<4?(withLabels?displayAnswer(lesson.labels[i],answers[i],show):answerMark(lesson.labels[i],answers[i]||'＿＿＿＿')):'')).join('')}
+function storyBlock(lesson,answers,withLabels=false,show=highlight){
  const count=Array.from(lesson.parts.map((p,i)=>p+(i<4?(answers[i]||''):'' )).join('')).length;
  const size=count>1600?24:count>1000?28:count>650?32:count>350?36:40;
- return '<div class="reading story-auto" data-story-length="'+count+'" style="--story-size:'+size+'px">'+paragraph(lesson,answers,withLabels)+'</div>';
+ return '<div class="reading story-auto" data-story-length="'+count+'" style="--story-size:'+size+'px">'+paragraph(lesson,answers,withLabels,show)+'</div>';
 }
 function openWriting(){
  const s=session;if(!s||s.submitting||joining)return;route('write');const lesson=getLesson(),editable=editableFields(s),checks=checkItems(s),who=s.stage==='group'?GROUPS[s.groupId-1].name:s.seat+' 號';
  const back=s.stage==='group'?'groups()':s.stage==='individual'?'seats()':'stages()';
- const tip=s.stage==='group'?'本階段共同填寫「位置、動作」。後半段先閱讀，第二階段再由每位同學填寫。':s.stage==='individual'?'前半段已匯入小組共作。本階段請各自補寫「對話、想法」，完成全文。':'觀課試寫可直接填寫四個欄位，不限字數。';
+ const tip=s.stage==='observer-group'?'觀課體驗第一階段：先補寫「位置、動作」，下半段先閱讀。繳交後按「進入第二階段」，前文會自動保留。':s.stage==='observer'?'觀課體驗第二階段：已匯入你完成的前半段，請接著補寫「對話、想法」。':s.stage==='group'?'本階段共同填寫「位置、動作」。後半段先閱讀，第二階段再由每位同學填寫。':s.stage==='individual'?'前半段已匯入小組共作。本階段請各自補寫「對話、想法」，完成全文。':'觀課試寫可直接填寫四個欄位，不限字數。';
  app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+esc(who)+' · '+stageName(s)+'</span><h1>'+esc(lesson.title)+'</h1></div><button class="secondary writing-back" onclick="'+back+'">← 返回'+(s.stage==='individual'?'座號':s.stage==='group'?'組別':'階段')+'</button></div>'+
  (s.recovery?'<div class="alert">找到這台裝置的未同步草稿。<button class="secondary" onclick="restoreDraft()">確認復原可編輯部分</button></div>':'')+
- '<div class="writing-tip">'+(s.submitted&&s.stage!=='group'?'已完成一篇完整短文，以下是小組共作與個人續寫合併後的作品。':tip)+'</div>'+(s.submitted&&s.stage!=='group'?'<article class="display-paper">'+storyBlock(lesson,s.answers)+'</article>':'<article class="writing-paper">'+lesson.parts.map((p,i)=>story(p)+(i<4?'<label class="blank '+(!editable.includes(i)?'locked-blank':'')+'" data-kind="'+lesson.labels[i]+'"><span>'+lesson.labels[i]+'</span><textarea rows="1" data-index="'+i+'" aria-label="'+lesson.labels[i]+(!editable.includes(i)?'，本階段僅供閱讀':'')+'" '+(!editable.includes(i)?'aria-readonly="true" ':'')+'placeholder="'+esc(!editable.includes(i)&&s.stage==='group'?'第二階段由每位同學填寫':lesson.hints[i])+'" '+(s.submitted||!editable.includes(i)?'disabled':'')+' oninput="editAnswer('+i+',this)" oncompositionstart="setComposing(true)" oncompositionend="finishComposing('+i+',this)">'+esc(s.answers[i])+'</textarea></label>':'')).join('')+'</article>')+
+ '<div class="writing-tip">'+(s.submitted&&!isUpper(s)?(isObserver(s)?'已完成兩階段體驗，以下是你補寫的完整作品。':'已完成一篇完整短文，以下是小組共作與個人續寫合併後的作品。'):tip)+'</div>'+(s.submitted&&s.stage!=='group'?'<article class="display-paper">'+storyBlock(lesson,s.answers,true,true)+'</article>':'<article class="writing-paper">'+lesson.parts.map((p,i)=>story(p)+(i<4?'<label class="blank '+(!editable.includes(i)?'locked-blank':'')+'" data-kind="'+lesson.labels[i]+'"><span>'+lesson.labels[i]+'</span><textarea rows="1" data-index="'+i+'" aria-label="'+lesson.labels[i]+(!editable.includes(i)?'，本階段僅供閱讀':'')+'" '+(!editable.includes(i)?'aria-readonly="true" ':'')+'placeholder="'+esc(!editable.includes(i)&&isUpper(s)?'第二階段由每位同學填寫':lesson.hints[i])+'" '+(s.submitted||!editable.includes(i)?'disabled':'')+' oninput="editAnswer('+i+',this)" oncompositionstart="setComposing(true)" oncompositionend="finishComposing('+i+',this)">'+esc(s.answers[i])+'</textarea></label>':'')).join('')+'</article>')+
  (!s.submitted?'<fieldset class="self-check"><legend>自我檢核 <small>修改文字後，請重新檢查</small></legend><div class="check-grid">'+checks.map((label,i)=>'<label><input type="checkbox" '+(s.checks[i]?'checked':'')+' onchange="checkWork('+i+',this.checked)"><span>'+label+'</span></label>').join('')+'</div></fieldset>':'')+
  '<div class="submit-reminder" id="submit-reminder" role="alert" hidden></div><div class="actions writing-actions"><span class="save-note" id="sync-message" role="status">'+(s.submitted?'✓ 已成功繳交':s.dirty?'草稿保留中…':'已載入目前草稿')+'</span>'+
- (s.submitted?'<span class="success">✓ 已繳交</span><button class="secondary edit-button" onclick="reopenWork()">修改作品</button>':'<button class="secondary save-button" onclick="saveDraft()">儲存草稿</button><button class="primary submit-button" onclick="submitWork()">'+(s.revising?'更新繳交':s.stage==='group'?'完成小組共作 ↗':'完成，繳交作品 ↗')+'</button>')+'</div>'+
+ (s.submitted?'<span class="success">✓ 已繳交</span><button class="secondary edit-button" onclick="reopenWork()">修改作品</button>':'<button class="secondary save-button" onclick="saveDraft()">儲存草稿</button><button class="primary submit-button" onclick="submitWork()">'+(s.revising?'更新繳交':isUpper(s)?(s.stage==='group'?'完成小組共作 ↗':'完成第一階段 ↗'):'完成，繳交作品 ↗')+'</button>')+'</div>'+
+ (s.stage==='observer-group'&&s.submitted?'<div class="actions"><button class="primary advance-button" onclick="advanceObserver()">匯入前文，進入第二階段 ↗</button></div>':'')+
  (s.stage==='group'&&s.submitted?'<div class="actions"><button class="primary" onclick="chooseStage(\'individual\')">前往第二階段・個人寫作 ↗</button></div>':'')+
- (s.unsentBackup?'<details class="writing-preview"><summary>查看尚未成功繳交的修改</summary><div class="reading">'+paragraph(lesson,s.unsentBackup.answers)+'</div></details>':'')+
+ (s.unsentBackup?'<details class="writing-preview"><summary>查看尚未成功繳交的修改</summary><div class="reading">'+paragraph(lesson,s.unsentBackup.answers,true,true)+'</div></details>':'')+
  (s.submitted&&s.stage!=='group'?'':'<details class="writing-preview" id="story-preview" ontoggle="refreshParagraph()"><summary>看看完整段落</summary><div class="reading" id="live-story"></div></details>');
  requestAnimationFrame(()=>document.querySelectorAll('.writing-paper textarea').forEach(fitWritingField));refreshParagraph();if(s.dirty)scheduleSave();
 }
@@ -176,7 +189,7 @@ function setComposing(value){if(session){session.composing=value;if(!value)sched
 function checkWork(i,value){if(session&&!session.submitting){session.checks[i]=value;if(session.checks.every(Boolean))document.getElementById('submit-reminder').hidden=true}}
 function refreshParagraph(){
  const preview=document.getElementById('story-preview');if(view!=='write'||!session||!preview?.open||previewPending)return;
- previewPending=true;requestAnimationFrame(()=>{previewPending=false;const current=document.getElementById('story-preview');if(view==='write'&&session&&current?.open)document.getElementById('live-story').innerHTML=paragraph(getLesson(session.topic),session.answers)});
+ previewPending=true;requestAnimationFrame(()=>{previewPending=false;const current=document.getElementById('story-preview');if(view==='write'&&session&&current?.open)document.getElementById('live-story').innerHTML=paragraph(getLesson(session.topic),session.answers,true,true)});
 }
 function scheduleSave(){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>{if(view==='write'&&session?.dirty&&!session.composing&&!session.submitting)void saveProgress(false,{automatic:true})},1800+Math.random()*1000)}
 function reminder(text){const el=document.getElementById('submit-reminder');el.textContent=text;el.hidden=false;el.scrollIntoView({block:'nearest',behavior:'smooth'})}
@@ -226,7 +239,7 @@ function dashboard(){
  if(!teacherPin){teacherEntry();return}route('dashboard');
  const done=teacherRows.filter(r=>r.seat<=27&&r.status==='submitted').length,writing=teacherRows.filter(r=>r.seat<=27&&r.status!=='submitted').length;
  app.innerHTML='<div class="dashboard-heading"><div><span class="eyebrow">TEACHER’S DESK</span><h1>每一個故事，正在發生。</h1><p>點選小組或座號展示作品，約每 4 秒同步。</p></div><div class="header-actions"><button class="secondary" onclick="home()">← 返回首頁</button><button class="secondary" onclick="refreshTeacher()">↻ 更新</button><button class="secondary" onclick="downloadWorks()">下載作品備份</button></div></div><div id="teacher-status" class="teacher-status" role="status"></div><h3>第一階段・小組共作 <small><span id="count-groups">'+teacherGroups.filter(r=>r.status==='submitted').length+'</span> / 7 已繳交</small></h3>'+teacherGroupGrid()+
- '<h3>第二階段・個人寫作</h3><div class="stats"><div><strong><span id="count-submitted">'+done+'</span><small> / 27</small></strong><span>學生已繳交</span></div><div><strong id="count-writing">'+writing+'</strong><span>學生寫作中</span></div><div><strong id="count-waiting">'+(27-done-writing)+'</strong><span>尚未進入</span></div><div><strong><span id="count-observers">'+teacherRows.filter(r=>r.seat>27&&r.status==='submitted').length+'</span><small> / 8</small></strong><span>觀課老師已繳交</span></div></div>'+seatGrid(1,27,true)+'<h3>觀課老師體驗區</h3>'+seatGrid(28,35,true);
+ '<h3>第二階段・個人寫作</h3><div class="stats"><div><strong><span id="count-submitted">'+done+'</span><small> / 27</small></strong><span>學生已繳交</span></div><div><strong id="count-writing">'+writing+'</strong><span>學生寫作中</span></div><div><strong id="count-waiting">'+(27-done-writing)+'</strong><span>尚未進入</span></div><div><strong><span id="count-observers">'+teacherRows.filter(r=>r.stage==='observer'&&r.status==='submitted').length+'</span><small> / 13</small></strong><span>觀課老師已繳交</span></div></div>'+seatGrid(1,27,true)+'<h3>觀課老師體驗區</h3>'+seatGrid(28,40,true);
  startTeacherPolling();
 }
 function selectedRecord(){return selectedTeacherGroup?teacherGroups.find(r=>r.groupId===selectedTeacherGroup):teacherRows.find(r=>r.seat===selectedTeacherSeat)}
@@ -234,7 +247,7 @@ function displayWork(n){if(!teacherPin){teacherEntry();return}selectedTeacherSea
 function displayGroup(id){if(!teacherPin){teacherEntry();return}selectedTeacherGroup=id;renderTeacherDisplay()}
 function renderTeacherDisplay(){
  route('display');const r=selectedRecord(),isGroup=!!selectedTeacherGroup,n=isGroup?selectedTeacherGroup:selectedTeacherSeat,who=isGroup?GROUPS[n-1].name:String(n).padStart(2,'0')+' 號';displayedKey=teacherRowKey(r);
- app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(isGroup?'第一階段・小組共作':n>27?'觀課老師作品':'小作家的完整作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+who+'</span> '+esc(getLesson().title)+'</h1></div><button class="secondary" onclick="dashboard()">返回控制台</button></div><div class="display-tools"><span id="teacher-work-status">'+workDetail(r)+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⤢ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?storyBlock(getLesson(),r.answers,true):'<div class="empty">還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="'+(isGroup?'displayGroup':'displayWork')+'('+(n-1)+')">← 上一'+(isGroup?'組':'號')+'</button><span>'+n+' / '+(isGroup?7:35)+'</span><button class="primary" '+(n===(isGroup?7:35)?'disabled':'')+' onclick="'+(isGroup?'displayGroup':'displayWork')+'('+(n+1)+')">下一'+(isGroup?'組':'號')+' →</button></div><button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="'+(isGroup?'releaseGroup':'releaseSeat')+'('+n+')">'+(isGroup?'清除此組共作':n>27?'清除此份觀課作品':'解除裝置並清除此份作品')+'</button>';
+ app.innerHTML='<div class="section-head"><div><span class="eyebrow">'+(isGroup?'第一階段・小組共作':n>27?'觀課老師作品':'小作家的完整作品')+'</span><h1 id="teacher-work-title"><span class="seat-badge">'+who+'</span> '+esc(getLesson().title)+'</h1></div><button class="secondary" onclick="dashboard()">返回控制台</button></div><div class="display-tools"><span id="teacher-work-status">'+workDetail(r)+'</span><label><input type="checkbox" '+(highlight?'checked':'')+' onchange="toggleHighlight(this.checked)"> 標示填寫內容</label><button class="text-btn" onclick="toggleFullScreen()">⤢ 全螢幕</button></div><div id="teacher-status" class="teacher-status" role="status"></div><article class="display-paper" id="teacher-story">'+(r?storyBlock(getLesson(),r.answers,true):'<div class="empty">還沒有開始寫作。</div>')+'</article><div class="actions"><button class="secondary" '+(n===1?'disabled':'')+' onclick="'+(isGroup?'displayGroup':'displayWork')+'('+(n-1)+')">← 上一'+(isGroup?'組':'號')+'</button><span>'+n+' / '+(isGroup?7:40)+'</span><button class="primary" '+(n===(isGroup?7:40)?'disabled':'')+' onclick="'+(isGroup?'displayGroup':'displayWork')+'('+(n+1)+')">下一'+(isGroup?'組':'號')+' →</button></div><button id="release-seat" class="text-btn release" '+(r?'':'hidden')+' onclick="'+(isGroup?'releaseGroup':'releaseSeat')+'('+n+')">'+(isGroup?'清除此組共作':n>27?'清除此份觀課作品':'解除裝置並清除此份作品')+'</button>';
  startTeacherPolling();
 }
 function teacherRowKey(r){return r?[r.key,r.claimId,r.revision,r.status].join(':'):'none'}
@@ -289,12 +302,12 @@ async function downloadWorks(){
  try{
   const d=await rpc(CONFIG,{flow:'two-stage',action:'teacher',teacherPin,includeLegacy:true},{retries:0});
   const complete=r=>getLesson().parts.map((p,i)=>p+(i<4?(r.answers[i]||'＿＿＿＿'):'')).join('');
-  const blocks=[...d.groups.map(r=>'【'+GROUPS[r.groupId-1].name+'・小組共作】\n'+workDetail(r)+'\n'+complete(r)),...d.rows.map(r=>'【'+String(r.seat).padStart(2,'0')+' 號・'+(r.stage==='observer'?'觀課試寫':GROUPS[r.groupId-1].name+'・個人寫作')+'】\n'+workDetail(r)+'\n'+complete(r))];
+  const blocks=[...d.groups.map(r=>'【'+GROUPS[r.groupId-1].name+'・小組共作】\n'+workDetail(r)+'\n'+complete(r)),...d.rows.map(r=>'【'+String(r.seat).padStart(2,'0')+' 號・'+(isObserver(r)?stageName(r):GROUPS[r.groupId-1].name+'・個人寫作')+'】\n'+workDetail(r)+'\n'+complete(r))];
   if(d.legacyRows?.length)blocks.push('【先前版本作品保留區】\n'+d.legacyRows.map(r=>'【'+r.seat+' 號】'+r.title+'\n'+r.parts.map((p,i)=>p+(i<4?(r.answers[i]||'＿＿＿＿'):'')).join('')).join('\n\n'));
   const text='小作家・兩階段寫作備份\n下載時間：'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'\n\n'+blocks.join('\n\n--------------------\n\n');
   const link=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));link.href=url;link.download='小作家_兩階段寫作_'+new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei'}).format(new Date())+'.txt';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }catch(e){setGlobal(e.message)}
 }
-Object.assign(window,{downloadWorks,home,stages,chooseStage,groups,selectGroup,seats,selectSeat,retryJoin,cancelJoin,openWriting,editAnswer,setComposing,finishComposing,checkWork,refreshParagraph,saveDraft,submitWork,reopenWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,displayGroup,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,releaseGroup,toggleChristmas});
+Object.assign(window,{advanceObserver,downloadWorks,home,stages,chooseStage,groups,selectGroup,seats,selectSeat,retryJoin,cancelJoin,openWriting,editAnswer,setComposing,finishComposing,checkWork,refreshParagraph,saveDraft,submitWork,reopenWork,restoreDraft,teacherEntry,loginTeacher,dashboard,displayWork,displayGroup,toggleHighlight,toggleFullScreen,refreshTeacher,releaseSeat,releaseGroup,toggleChristmas});
 home();
 

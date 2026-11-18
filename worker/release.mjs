@@ -1,1 +1,1 @@
-export const RELEASE="20261118-text-connection-05";
+export const RELEASE="20261118-observers-06";
