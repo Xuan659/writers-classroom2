@@ -155,13 +155,15 @@ button,input,textarea{font-size:max(16px,1em)}
 @media(max-width:650px){header{height:auto;min-height:82px;gap:10px;flex-wrap:wrap;padding-block:12px}.header-actions{gap:7px}header .theme-toggle,header .text-btn{font-size:12px}.writing-actions .save-button{flex:0 0 auto}.writing-actions .submit-button{flex:1;min-width:170px}.dashboard-heading{flex-direction:column;align-items:flex-start}.dashboard-heading .header-actions{width:100%}.display-tools{gap:12px;align-items:center}.display-tools label{margin-left:0}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
-/* Teacher display: category badges stay with the beginning of each answer. */
+/* Answer colors are shared by student previews and teacher displays. */
 .display-answer{display:inline;white-space:inherit}
 .display-answer-start{display:inline-block;position:relative;vertical-align:baseline;white-space:inherit}
-.display-label{position:absolute;left:0;top:-9px;display:inline-block;white-space:nowrap;border:1px solid;border-radius:5px;padding:2px 7px;font:500 13px/1.25 "Noto Sans TC","Microsoft JhengHei",sans-serif;letter-spacing:.03em;z-index:1}
-.display-answer[data-kind="位置"] .display-label{color:#55734e;border-color:#adc5a2;background:#f4f8ef}
-.display-answer[data-kind="動作"] .display-label{color:#977135;border-color:#d7be8c;background:#fff9ec}
-.display-answer[data-kind="對話"] .display-label{color:#5b7195;border-color:#aebfd6;background:#f2f6fc}
-.display-answer[data-kind="想法"] .display-label{color:#86618e;border-color:#cbb3d1;background:#faf3fb}
+.display-answer[data-kind="位置"],mark.answer-highlight[data-kind="位置"]{--answer-bg:#e3eedc;--answer-ink:#55734e;--answer-border:#adc5a2;--badge-bg:#f4f8ef}
+.display-answer[data-kind="動作"],mark.answer-highlight[data-kind="動作"]{--answer-bg:#faedcc;--answer-ink:#977135;--answer-border:#d7be8c;--badge-bg:#fff9ec}
+.display-answer[data-kind="對話"],mark.answer-highlight[data-kind="對話"]{--answer-bg:#e2edf9;--answer-ink:#5b7195;--answer-border:#aebfd6;--badge-bg:#f2f6fc}
+.display-answer[data-kind="想法"],mark.answer-highlight[data-kind="想法"]{--answer-bg:#efe3f4;--answer-ink:#86618e;--answer-border:#cbb3d1;--badge-bg:#faf3fb}
+.reading mark.answer-highlight{background-color:var(--answer-bg,#e8eed7);color:inherit;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.reading mark.answer-highlight.plain{background:transparent}
+.display-label{position:absolute;left:0;top:-20px;display:inline-block;white-space:nowrap;border:1px solid var(--answer-border,#adc5a2);border-radius:6px;padding:4px 10px;font:500 18px/1.25 "Noto Sans TC","Microsoft JhengHei",sans-serif;letter-spacing:.03em;color:var(--answer-ink,#55734e);background:var(--badge-bg,#f4f8ef);z-index:1}
 .display-label[hidden]{display:none!important}
-@media(max-width:650px){.display-label{font-size:12px;padding:2px 6px;top:-8px}}
+@media(max-width:650px){.display-label{font-size:16px;padding:3px 9px;top:-17px}}

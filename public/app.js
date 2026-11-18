@@ -1,8 +1,8 @@
-import {CONFIG} from './config.js';
-import {LESSONS} from './lessons.js';
-import {HOLIDAY_ART} from './holiday-art.js';
-import {ReliableWriter} from './reliable-writer.js';
-import {rpc,validateConfig} from './transport.js';
+import {CONFIG} from './config.js?v=20261118-display-01';
+import {LESSONS} from './lessons.js?v=20261118-display-01';
+import {HOLIDAY_ART} from './holiday-art.js?v=20261118-display-01';
+import {ReliableWriter} from './reliable-writer.js?v=20261118-display-01';
+import {rpc,validateConfig} from './transport.js?v=20261118-display-01';
 
 const app=document.getElementById('app'),globalMessage=document.getElementById('global-message');
 const CHECKS=["標點符號使用恰當，沒有錯字","有寫出人物所在的具體位置","有寫出人物正在做的動作","有寫出符合情境與人物心情的對話","有寫出人物心裡的想法","我的補寫與前後文連貫，讀起來通順"];
@@ -80,8 +80,9 @@ function chooseTopic(reuse=false){
  route('topics');if(session.submitted||session.revising){openWriting(session.topic);return}
  if(reuse){const status=document.getElementById('joining-status');if(status)status.hidden=true;document.querySelectorAll('.topic-card,.section-head .secondary').forEach(el=>el.disabled=false)}else app.innerHTML=topicMarkup(session.seat);
 }
-function displayAnswer(label,value){const text=value||'＿＿＿＿';const name=text.match(/^(小傑|小恩|小可|小娜|小琪)/);const first=name?name[0]:(Array.from(text)[0]||'');const rest=text.slice(first.length);const cls=highlight?'':'plain';return '<span class="display-answer" data-kind="'+esc(label)+'"><span class="display-answer-start"><span class="display-label" '+(highlight?'':'hidden')+'>'+esc(label)+'</span><mark class="'+cls+'">'+story(first)+'</mark></span><mark class="'+cls+'">'+story(rest)+'</mark></span>'}
-function paragraph(lesson,answers,withLabels=false){return lesson.parts.map((p,i)=>story(p)+(i<4?(withLabels?displayAnswer(lesson.labels[i],answers[i]):'<mark class="'+(highlight?'':'plain')+'">'+story(answers[i]||'＿＿＿＿')+'</mark>'):'')).join('')}
+function answerMark(label,text,plain=false){return '<mark class="answer-highlight'+(plain?' plain':'')+'" data-kind="'+esc(label)+'">'+story(text)+'</mark>'}
+function displayAnswer(label,value){const text=value||'＿＿＿＿';const name=text.match(/^(小傑|小恩|小可|小娜|小琪)/);const first=name?name[0]:(Array.from(text)[0]||'');const rest=text.slice(first.length);return '<span class="display-answer" data-kind="'+esc(label)+'"><span class="display-answer-start"><span class="display-label" '+(highlight?'':'hidden')+'>'+esc(label)+'</span>'+answerMark(label,first,!highlight)+'</span>'+answerMark(label,rest,!highlight)+'</span>'}
+function paragraph(lesson,answers,withLabels=false){return lesson.parts.map((p,i)=>story(p)+(i<4?(withLabels?displayAnswer(lesson.labels[i],answers[i]):answerMark(lesson.labels[i],answers[i]||'＿＿＿＿')):'')).join('')}
 function openWriting(topic){
  const s=session;if(!s||s.submitting||joining)return;
  if(s.submitted||s.revising)topic=s.topic;

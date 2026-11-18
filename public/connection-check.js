@@ -1,6 +1,6 @@
-import {CONFIG} from './config.js';
-import {rpc} from './transport.js';
-import {ReliableWriter} from './reliable-writer.js';
+import {CONFIG} from './config.js?v=20261118-display-01';
+import {rpc} from './transport.js?v=20261118-display-01';
+import {ReliableWriter} from './reliable-writer.js?v=20261118-display-01';
 const form=document.getElementById('test-form'),log=document.getElementById('test-log'),button=document.getElementById('run-test');
 function line(text){const p=document.createElement('p');p.textContent=text;log.appendChild(p)}
 form.addEventListener('submit',async event=>{
