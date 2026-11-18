@@ -190,3 +190,6 @@ button,input,textarea{font-size:max(16px,1em)}
 .advance-button{white-space:normal}
 @media(min-width:651px) and (max-width:1100px){.writing-paper{padding:32px 28px}.display-paper{padding:38px 30px}.section-head{gap:20px}.section-head h1{font-size:clamp(27px,3.6vw,38px)}}
 @media(max-width:650px){.writing-paper,.display-paper{padding:26px 18px}.reading.story-auto{font-size:24px}.writing-actions{gap:12px}.writing-actions .save-note{flex-basis:100%}.actions .primary,.actions .secondary{max-width:100%}.display-label{top:-18px}}
+
+/* Show the readable scaffold while ownership and current revision are confirmed. */
+.join-preview{margin-top:16px}.join-preview .reading{font-size:clamp(22px,2.4vw,30px)}

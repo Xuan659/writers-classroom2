@@ -1,0 +1,238 @@
+{
+  "version": "20261118-speed-07",
+  "base": "20261118-observers-06",
+  "workflow": "two-stage-v1",
+  "phaseSplit": {
+    "group": [
+      "位置",
+      "動作"
+    ],
+    "individual": [
+      "對話",
+      "想法"
+    ]
+  },
+  "schemaAutoCreate": "writing_two_stage",
+  "legacyTablePreserved": "submissions",
+  "preservedSettings": [
+    "public/config.js",
+    "TEACHER_PIN",
+    "D1 database binding"
+  ],
+  "files": [
+    {
+      "file": "public/.nojekyll",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "public/app.bundle.js",
+      "sha256": "d03119986b1f52e310dad5fb40e052f661e3287b7c5ebc7ba3d91dd621257649"
+    },
+    {
+      "file": "public/app.js",
+      "sha256": "c6ee76991ac305f909b46becd55d12d26a852162ad297ba19b7d5e859b460671"
+    },
+    {
+      "file": "public/connection-check.html",
+      "sha256": "4b04262789ae7448325b79e3557f3d92a974dfbf17658a327e451fdc206224b3"
+    },
+    {
+      "file": "public/connection-check.js",
+      "sha256": "63b54c47f4f72e55fe3f30911542bb7758e29837385aa8aae27540439b538c96"
+    },
+    {
+      "file": "public/deployment-check.html",
+      "sha256": "4a27a867fd8eb27a727cbef67467f8263f99c644833e1e93bd9fa70fd7f9ebdc"
+    },
+    {
+      "file": "public/diagnostics.html",
+      "sha256": "c38dffc02514f547643624fe0b6dce12a39de697f4eb8b10c0391f0f57d64e69"
+    },
+    {
+      "file": "public/diagnostics.js",
+      "sha256": "0954d4cf484f20e0d700eb2ec363d7a4a17544573f6ade33e357a922df5ff33d"
+    },
+    {
+      "file": "public/holiday-art.js",
+      "sha256": "5ae90769ed55a9b9cfa7335345f1c4442c65a437a07514cb268f9d29d4be6b18"
+    },
+    {
+      "file": "public/index.html",
+      "sha256": "fcd29648f6951ba86f157e09d6988e6ed61b751ceefa66954fcc1e47a1b0c860"
+    },
+    {
+      "file": "public/lessons.js",
+      "sha256": "73bb2071c1f8c956bd53cf7a91c0f07123b284a1668d86448b2ce081b47652da"
+    },
+    {
+      "file": "public/reliable-writer.js",
+      "sha256": "d1f7f160fc94c2513b076df04c30a5a88af0454bdbbf82fc547875d63ae26bc9"
+    },
+    {
+      "file": "public/styles.css",
+      "sha256": "f14055fa08424dfbff13dbe4199d6bce37835ae6c55e7dafbe0550dd6e183b3c"
+    },
+    {
+      "file": "public/transport.js",
+      "sha256": "59b53fc9d15f31577586640a67dd9c3e40c2262f85f9bee5cd4af271646f048a"
+    },
+    {
+      "file": "public/_headers",
+      "sha256": "59f8ae8ccca22d0235497b27cf83d1442f8a7d2e3069c18ecfad87819e6aaf7b"
+    },
+    {
+      "file": "worker/classroom-service.mjs",
+      "sha256": "78d79f64071348acceb65ab24b3ef1bef687a060497b0bfc934196a5a895f140"
+    },
+    {
+      "file": "worker/diagnostics.mjs",
+      "sha256": "002287b797aa0fbd1ae2ac78192f87fff70f96321eab058b9b0b81917586d776"
+    },
+    {
+      "file": "worker/index.js",
+      "sha256": "3acbb47cb547ca66e5b742aad20db3f769d37363448950c653eaa357fd1cc2e6"
+    },
+    {
+      "file": "worker/legacy-lessons.mjs",
+      "sha256": "46bba057ea49e61a6190d45c3732e951d9992ee83d5b99aebb1373584f5152e8"
+    },
+    {
+      "file": "worker/release.mjs",
+      "sha256": "f665f4de2c0bb2604473c4624cba01f5031238b2693b9eaf827dde05f45c605b"
+    },
+    {
+      "file": "worker/two-stage-service.mjs",
+      "sha256": "9933974a2d612522d43a4375a2129192aed7764861dee09bdfe6e7698abb495f"
+    },
+    {
+      "file": "tests/boot-check.mjs",
+      "sha256": "e4bc9b6d26a99509e69fcf07840b7cfb59e88a398a7834141937f78934c81034"
+    },
+    {
+      "file": "tests/concurrency-check.mjs",
+      "sha256": "b8001e686db95c839a4de136e80de9f6666c1ef3ac4fb497846f59dc0273fe0a"
+    },
+    {
+      "file": "tests/concurrency-results.json",
+      "sha256": "c71a2be864b604f88a7358092c7867ec86ae230c0d347b431e1083ce163b7603"
+    },
+    {
+      "file": "tests/deployment-text-check.mjs",
+      "sha256": "4dacb8c427bce271306f2cfd00b1921747044000e63c27eb1766e3534e7661d7"
+    },
+    {
+      "file": "tests/diagnostics-check.mjs",
+      "sha256": "2fe750b38bdc56f38b4337cc31daa25630ba989127cbc9886898b07471ca3d94"
+    },
+    {
+      "file": "tests/end-to-end-check.mjs",
+      "sha256": "088f6aa97206792f41118a9c17821d3266262a0ea9ac39449dcb17310aee0419"
+    },
+    {
+      "file": "tests/end-to-end-results.json",
+      "sha256": "0f31241abb412255b2fb5215fb87abb42a80d75ed48a91a3ffb1a197a136ea62"
+    },
+    {
+      "file": "tests/forty-tablet-latency-check.mjs",
+      "sha256": "95cce80ca8aa92361071e05eea180831de403b2d30a3350a642d5545c686b58a"
+    },
+    {
+      "file": "tests/forty-tablet-latency-results.json",
+      "sha256": "d0e0509f5cfe92baa947d4b92e53947faf86ef20e74a9bc7a0171485a672d1c5"
+    },
+    {
+      "file": "tests/live-readonly-40-results.json",
+      "sha256": "358ff4bcdefd75e534869807720702716dd702b6dfb8ba24e1b635623ebf0d3d"
+    },
+    {
+      "file": "tests/observer-access-check.mjs",
+      "sha256": "c83ff2802f3a512cc52af64c72a395ace974527a975329785c95f27015ce1323"
+    },
+    {
+      "file": "tests/performance-check.mjs",
+      "sha256": "d1b76d679541d3a7af1e536ab1e13d7472d841c8f1a3983376490120cf23981f"
+    },
+    {
+      "file": "tests/performance-results.json",
+      "sha256": "d6413c8f38538116d6ba27eaad9619028733b36a28703a3392890af4d953bac0"
+    },
+    {
+      "file": "tests/reopen-check.mjs",
+      "sha256": "f07d1bd9e95e7b0db99b2b289b6a7a7211ed8d130b3e704e8d26546012988c7f"
+    },
+    {
+      "file": "tests/seat-join-check.mjs",
+      "sha256": "4689cf88c69fa28fa8d12606ed928531da334ce5ab0616b44fab21bdda573455"
+    },
+    {
+      "file": "tests/speed-check.mjs",
+      "sha256": "e5bf0daf1632d58a48946d7fea96580d0cd27ed996435fb297c359a4d46d3b14"
+    },
+    {
+      "file": "tests/speed-results.json",
+      "sha256": "08affb50ec2c82445db7a25a878d8390f97387246317b2a5c4485c0aa1d95c66"
+    },
+    {
+      "file": "tests/two-stage-check.mjs",
+      "sha256": "e3dc55b29aae16dccbea88c1ee9d13304c96f5f3a247790355250c572924dfaa"
+    },
+    {
+      "file": "tests/two-stage-results.json",
+      "sha256": "84bf2d9df4f1151b3bc68008b1aa5c9a3b333ef4f4465d71ee6a59bfc252660c"
+    },
+    {
+      "file": "tests/two-stage-ui-check.mjs",
+      "sha256": "bd635cb0a2205ce3dcdd221cc90f31d8096ea038c3a84ec4150ff5b06b85ce75"
+    },
+    {
+      "file": "tests/two-stage-ui-results.json",
+      "sha256": "dcdc8f8406b02e8225c6ab77d2e4968de1dec4d9c3b5c544f38d473874401ed5"
+    },
+    {
+      "file": "tests/uncertain-submit-check.mjs",
+      "sha256": "e951f34f1c0e9b6287e4cbdf82b4f72eef171653c0b60598483d14fb3e046d65"
+    },
+    {
+      "file": "database/01-create-table.sql",
+      "sha256": "fec7cea78ae33b46a678d200ef434a7cb4373cef0669cd7408b2ffac1938fe6a"
+    },
+    {
+      "file": "wrangler.jsonc",
+      "sha256": "240cd7f5e086bfb710845f47f912a4123456dc859bbeb58caee25a0561741423"
+    },
+    {
+      "file": "build-client.mjs",
+      "sha256": "6e7477694e6c5879b4b76240663121c9bf577bcc24bd0c30a8f0d70699bc101a"
+    },
+    {
+      "file": "run-checks.mjs",
+      "sha256": "73f520fac0c3c1324cc563d370396d85d0bd51007019facb577e15981c388f7f"
+    },
+    {
+      "file": "package.json",
+      "sha256": "8f7722b9c4e1dd926b96d4585403b0859b32e48ab129d9662d3cd70c5712e1b5"
+    },
+    {
+      "file": "HOW_TO_UPDATE.txt",
+      "sha256": "018b32e35022e2cd27a985927e23a6a0aac5c71dbc2f4920040f6c601be5c61f"
+    },
+    {
+      "file": "CHECK_REPORT.md",
+      "sha256": "018b32e35022e2cd27a985927e23a6a0aac5c71dbc2f4920040f6c601be5c61f"
+    },
+    {
+      "file": "UPDATE_HISTORY.md",
+      "sha256": "acd19f73887a33f4747b81de8eacff0c9b1f459ae617c612591b78ef18a86ea1"
+    }
+  ],
+  "workerName": "writers-classroom2",
+  "observers": {
+    "from": 28,
+    "to": 40,
+    "phases": [
+      "位置、動作",
+      "對話、想法"
+    ],
+    "groupsRequired": false
+  }
+}

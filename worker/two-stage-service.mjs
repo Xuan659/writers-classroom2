@@ -1,7 +1,7 @@
 import {databaseFailure} from './diagnostics.mjs';
 import {LEGACY_LESSONS} from './legacy-lessons.mjs';
 const GROUPS=[[6,20,22,15],[9,13,26,18],[4,25,1,8],[2,3,21,19],[12,10,16,24],[17,14,11,7],[27,5,23]];
-const reply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
+const baseReply=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const setups=new WeakMap();
 export const WORKFLOW_VERSION='two-stage-v1';
 export const SCHEMA="CREATE TABLE IF NOT EXISTS writing_two_stage (work_key TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('group','individual','observer')),target INTEGER NOT NULL,group_id INTEGER NOT NULL,token TEXT NOT NULL,answers TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('writing','submitted')),claim_id TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 0,last_request TEXT NOT NULL DEFAULT '',updated TEXT NOT NULL,parent_claim TEXT NOT NULL DEFAULT '',parent_revision INTEGER NOT NULL DEFAULT 0)";
@@ -18,6 +18,7 @@ function targetOf(b){
  return null;
 }
 export async function handleTwoStage(b,env){
+ const started=performance.now(),reply=(data,status=200)=>{const response=baseReply(data,status);response.headers.set('Server-Timing','app;dur='+(performance.now()-started).toFixed(1));return response};
  try{
   const db=env.DB;if(!db)return reply({error:'作品儲存服務尚未就緒，請通知老師。',retryable:false},503);
   await setup(db);
@@ -47,17 +48,18 @@ export async function handleTwoStage(b,env){
   }
   if(typeof b.token!=='string'||b.token.length<20||b.token.length>100)return reply({error:'裝置識別有誤，請重新載入網站。'},400);
   if(b.action==='join'){
-   let r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
+   let r,parent;
+   if(t.stage==='individual'){const records=(await db.prepare('SELECT * FROM writing_two_stage WHERE work_key IN (?,?)').bind(t.key,'g:'+t.groupId).all()).results;r=records.find(r=>r.work_key===t.key);parent=records.find(r=>r.work_key==='g:'+t.groupId)}
+   else r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
    if(!r){
     let a=['','','',''],parentClaim='',parentRevision=0;
     if(t.stage==='observer')return reply({error:'請先完成觀課體驗的第一階段，再接著填寫下半段。',code:'OBSERVER_FIRST_REQUIRED',retryable:false},423);
     if(t.stage==='individual'){
-     const parent=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind('g:'+t.groupId).first();
      if(!parent||parent.status!=='submitted')return reply({error:'請先完成並繳交本組第一階段的小組共作，再進入個人寫作。',code:'GROUP_NOT_READY',retryable:false},423);
      const p=answersOf(parent);a=[p[0],p[1],'',''];parentClaim=parent.claim_id;parentRevision=parent.revision;
     }
-    await db.prepare("INSERT INTO writing_two_stage(work_key,kind,target,group_id,token,answers,status,claim_id,revision,last_request,updated,parent_claim,parent_revision) VALUES(?,?,?,?,?,?,'writing',?,0,'',?,?,?) ON CONFLICT(work_key) DO NOTHING").bind(t.key,t.stage==='observer-group'?'observer':t.stage,t.id,t.groupId,b.token,JSON.stringify(a),crypto.randomUUID(),new Date().toISOString(),parentClaim,parentRevision).run();
-    r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
+    r=await db.prepare("INSERT INTO writing_two_stage(work_key,kind,target,group_id,token,answers,status,claim_id,revision,last_request,updated,parent_claim,parent_revision) VALUES(?,?,?,?,?,?,'writing',?,0,'',?,?,?) ON CONFLICT(work_key) DO NOTHING RETURNING *").bind(t.key,t.stage==='observer-group'?'observer':t.stage,t.id,t.groupId,b.token,JSON.stringify(a),crypto.randomUUID(),new Date().toISOString(),parentClaim,parentRevision).first();
+    if(!r)r=await db.prepare('SELECT * FROM writing_two_stage WHERE work_key=?').bind(t.key).first();
    }
    if(!allowed(r,b))return reply({error:t.stage==='group'?'本組已由另一台平板開始共作，請使用原本的小組平板；需要更換時請通知老師。':'這個座號已由另一台平板開始個人寫作，請確認座號或通知老師。',code:'DEVICE_CONFLICT'},409);
    return reply(rowOf(r));
