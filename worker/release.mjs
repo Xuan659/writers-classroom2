@@ -1,1 +1,1 @@
-export const RELEASE="20261118-speed-07";
+export const RELEASE="20261120-checks-08";

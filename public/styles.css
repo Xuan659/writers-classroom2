@@ -193,3 +193,8 @@ button,input,textarea{font-size:max(16px,1em)}
 
 /* Show the readable scaffold while ownership and current revision are confirmed. */
 .join-preview{margin-top:16px}.join-preview .reading{font-size:clamp(22px,2.4vw,30px)}
+
+/* Student-only result labels: smaller, with space reserved in the actual line box. */
+.writing-preview .display-answer-start,[data-student-result] .display-answer-start{padding-top:23px;line-height:inherit}
+.writing-preview .display-label,[data-student-result] .display-label{top:0;left:0;font-size:13px;line-height:1.2;padding:2px 6px;border-radius:4px;letter-spacing:0;max-width:none}
+@media(max-width:650px){.writing-preview .display-answer-start,[data-student-result] .display-answer-start{padding-top:22px}.writing-preview .display-label,[data-student-result] .display-label{font-size:12px;padding:2px 6px;top:0}}

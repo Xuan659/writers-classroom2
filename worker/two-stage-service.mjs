@@ -90,7 +90,7 @@ export async function handleTwoStage(b,env){
   if(!Array.isArray(b.answers)||b.answers.length!==4||b.answers.some(v=>typeof v!=='string'))return reply({error:'作答格式不正確，請重新載入後再試。'},400);
   const current=answersOf(r),upper=t.stage==='group'||t.stage==='observer-group',lower=t.stage==='individual'||t.stage==='observer',a=upper?[b.answers[0],b.answers[1],'','']:lower?[current[0],current[1],b.answers[2],b.answers[3]]:[...b.answers];
   const editable=upper?[0,1]:[2,3];
-  const required=upper?4:6;
+  const required=4;
   if(b.action==='submit'&&(!Array.isArray(b.checks)||b.checks.length!==required||b.checks.some(v=>v!==true)))return reply({error:'請先完成本階段全部自我檢核。'},400);
   if(b.action==='submit'&&editable.some(i=>!a[i].trim()))return reply({error:'請先填完本階段開放的欄位。'},400);
   if(r.last_request===b.requestId)return reply({ok:true,status:r.status,revision:r.revision});
