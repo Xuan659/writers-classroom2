@@ -1,6 +1,6 @@
 {
-  "version": "20261118-speed-07",
-  "base": "20261118-observers-06",
+  "version": "20261125-text-09",
+  "base": "20261120-checks-08",
   "workflow": "two-stage-v1",
   "phaseSplit": {
     "group": [
@@ -26,11 +26,11 @@
     },
     {
       "file": "public/app.bundle.js",
-      "sha256": "d03119986b1f52e310dad5fb40e052f661e3287b7c5ebc7ba3d91dd621257649"
+      "sha256": "39bdedb90c95802f508f888def5ce88c04f9c5a9080226abfdbd037da5550788"
     },
     {
       "file": "public/app.js",
-      "sha256": "c6ee76991ac305f909b46becd55d12d26a852162ad297ba19b7d5e859b460671"
+      "sha256": "7f2536dca5cc0f7fccad32d1d89c3f2e85a9b71bcadbde764ad10108a3888bc4"
     },
     {
       "file": "public/connection-check.html",
@@ -42,7 +42,7 @@
     },
     {
       "file": "public/deployment-check.html",
-      "sha256": "4a27a867fd8eb27a727cbef67467f8263f99c644833e1e93bd9fa70fd7f9ebdc"
+      "sha256": "db1182b9f56aaa669bbb06a83c0a24ed89d6331f348752738ae1e8d3cde2e977"
     },
     {
       "file": "public/diagnostics.html",
@@ -58,11 +58,11 @@
     },
     {
       "file": "public/index.html",
-      "sha256": "fcd29648f6951ba86f157e09d6988e6ed61b751ceefa66954fcc1e47a1b0c860"
+      "sha256": "fab02e660d4497ef9497eec5d5f40b6c2742b41ae70278c8087748bf653ec819"
     },
     {
       "file": "public/lessons.js",
-      "sha256": "73bb2071c1f8c956bd53cf7a91c0f07123b284a1668d86448b2ce081b47652da"
+      "sha256": "22f65748e2a778bb65869ee0bb7edc2c6caa8da46591b5fd8dafe77bd4b7faa0"
     },
     {
       "file": "public/reliable-writer.js",
@@ -70,7 +70,7 @@
     },
     {
       "file": "public/styles.css",
-      "sha256": "f14055fa08424dfbff13dbe4199d6bce37835ae6c55e7dafbe0550dd6e183b3c"
+      "sha256": "061a9efd1c1db9b82d71ea680dd26ac798f6b10b6de66a23a4263632e3268a6e"
     },
     {
       "file": "public/transport.js",
@@ -98,15 +98,23 @@
     },
     {
       "file": "worker/release.mjs",
-      "sha256": "f665f4de2c0bb2604473c4624cba01f5031238b2693b9eaf827dde05f45c605b"
+      "sha256": "15798338c2c03d5041cd9d124ac0fb6bcc04543a9fb65638c5bd91f459d3c2db"
     },
     {
       "file": "worker/two-stage-service.mjs",
-      "sha256": "9933974a2d612522d43a4375a2129192aed7764861dee09bdfe6e7698abb495f"
+      "sha256": "bf67d06535637b54391d57508fdbf95e46120c3fb5e4581c43b01afbac9ae637"
     },
     {
       "file": "tests/boot-check.mjs",
-      "sha256": "e4bc9b6d26a99509e69fcf07840b7cfb59e88a398a7834141937f78934c81034"
+      "sha256": "cc5f9ab2488949eb057293f2d9ca5e4efa0ff14fe8e25c6c01602f3a119780be"
+    },
+    {
+      "file": "tests/browser-layout-check.mjs",
+      "sha256": "d555ac5270f17f82129d6c898fe37a1308e2d8f0343363c1eb570eb829ef579a"
+    },
+    {
+      "file": "tests/browser-layout-results.json",
+      "sha256": "58fe81bd12e8db34bc63bccf9a30137332cecc7fc83b9ef61974fcf63067a923"
     },
     {
       "file": "tests/concurrency-check.mjs",
@@ -114,11 +122,11 @@
     },
     {
       "file": "tests/concurrency-results.json",
-      "sha256": "c71a2be864b604f88a7358092c7867ec86ae230c0d347b431e1083ce163b7603"
+      "sha256": "dfb3b89cc65ca72fa1c7e3e7c2a930fa925c037f5a85322f1c7b1e71ac7ef3d7"
     },
     {
       "file": "tests/deployment-text-check.mjs",
-      "sha256": "4dacb8c427bce271306f2cfd00b1921747044000e63c27eb1766e3534e7661d7"
+      "sha256": "733177d3491909651ffb56318f6c64ce5ce5a05c451b96408b590eac9aacd413"
     },
     {
       "file": "tests/diagnostics-check.mjs",
@@ -134,11 +142,11 @@
     },
     {
       "file": "tests/forty-tablet-latency-check.mjs",
-      "sha256": "95cce80ca8aa92361071e05eea180831de403b2d30a3350a642d5545c686b58a"
+      "sha256": "ace5d3659f6cb815d3ff7463f910dac63973a200ae87a541d4f93f2e16b33206"
     },
     {
       "file": "tests/forty-tablet-latency-results.json",
-      "sha256": "d0e0509f5cfe92baa947d4b92e53947faf86ef20e74a9bc7a0171485a672d1c5"
+      "sha256": "aaa4dbc44cd0731431a36973fa7b10d7a92fc46e319681ff2bb62cfff37df0f3"
     },
     {
       "file": "tests/live-readonly-40-results.json",
@@ -166,7 +174,7 @@
     },
     {
       "file": "tests/speed-check.mjs",
-      "sha256": "e5bf0daf1632d58a48946d7fea96580d0cd27ed996435fb297c359a4d46d3b14"
+      "sha256": "dc467fe367945b00d630553b95db6431a3beaa1d190d3c88fd9a44f307494efa"
     },
     {
       "file": "tests/speed-results.json",
@@ -174,15 +182,15 @@
     },
     {
       "file": "tests/two-stage-check.mjs",
-      "sha256": "e3dc55b29aae16dccbea88c1ee9d13304c96f5f3a247790355250c572924dfaa"
+      "sha256": "0ad0b60221ff0d3df2f7d08198de7b85dde8f58d062a71bf49a719a6ff7ec1ad"
     },
     {
       "file": "tests/two-stage-results.json",
-      "sha256": "84bf2d9df4f1151b3bc68008b1aa5c9a3b333ef4f4465d71ee6a59bfc252660c"
+      "sha256": "b0b361539041802d67654bcb85267887fcf19c3fe1df3d8c623de4ba6343c4e0"
     },
     {
       "file": "tests/two-stage-ui-check.mjs",
-      "sha256": "bd635cb0a2205ce3dcdd221cc90f31d8096ea038c3a84ec4150ff5b06b85ce75"
+      "sha256": "315a33e7e78c997f705e4a080535cd3c65fbc45f0fabb96358857562c30292fe"
     },
     {
       "file": "tests/two-stage-ui-results.json",
@@ -214,15 +222,15 @@
     },
     {
       "file": "HOW_TO_UPDATE.txt",
-      "sha256": "018b32e35022e2cd27a985927e23a6a0aac5c71dbc2f4920040f6c601be5c61f"
+      "sha256": "73b91b5ca647c998e24ab011608c5ec1302d2d2e40f44672dbaee149d932e535"
     },
     {
       "file": "CHECK_REPORT.md",
-      "sha256": "018b32e35022e2cd27a985927e23a6a0aac5c71dbc2f4920040f6c601be5c61f"
+      "sha256": "73b91b5ca647c998e24ab011608c5ec1302d2d2e40f44672dbaee149d932e535"
     },
     {
       "file": "UPDATE_HISTORY.md",
-      "sha256": "acd19f73887a33f4747b81de8eacff0c9b1f459ae617c612591b78ef18a86ea1"
+      "sha256": "32749093a95fa65578f96549ccfb080c3f8492bba3210747040b738511728b6f"
     }
   ],
   "workerName": "writers-classroom2",
@@ -234,5 +242,19 @@
       "對話、想法"
     ],
     "groupsRequired": false
+  },
+  "checklists": {
+    "upper": [
+      0,
+      1,
+      2,
+      5
+    ],
+    "lower": [
+      0,
+      3,
+      4,
+      5
+    ]
   }
 }
